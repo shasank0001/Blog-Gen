@@ -149,7 +149,7 @@ graph TD
 * Python 3.11+
 * **Ollama** (Optional, for local privacy mode)
 
-### 🚀 Quick Start (Hackathon Reviewers)
+### 🚀 Quick Start
 
 We have provided automated scripts to get you up and running quickly.
 
