@@ -56,3 +56,18 @@ docker-compose.override.yml
 
 # Project Specific
 backend/data/
+backend/uploads/
+backend/workflow_logs/
+backend/server.log
+backend/*.log
+
+# Test files (use tests/ directory instead)
+backend/test_*.py
+backend/FLOW_DIAGRAM.py
+.pytest_cache/
+
+# Development utilities
+log-viewer/
+
+# Documentation (keep versioned separately)
+DEEP_RESEARCH_INTEGRATION.md

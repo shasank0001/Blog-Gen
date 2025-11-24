@@ -1,4 +1,7 @@
-from typing import TypedDict, List, Dict, Any, Optional
+from typing import TypedDict, List, Dict, Any, Optional, Annotated
+from typing_extensions import Annotated as AnnotatedExt
+from pydantic import BaseModel, Field
+import operator
 
 class Section(TypedDict):
     id: str
@@ -7,14 +10,42 @@ class Section(TypedDict):
     source_ids: List[str]
     content: Optional[str]
 
+class Citation(BaseModel):
+    url: str
+    title: str
+    content: str
+
+class ResearchResult(BaseModel):
+    query: str
+    summary: str
+    citations: List[Citation]
+
 class AgentState(TypedDict):
+    user_id: str # Added for namespace construction
     topic: str
     tone_urls: List[str]
     target_domain: str
     selected_bins: List[str]
+    use_local: bool = False
+    model_provider: str = "openai" # openai, anthropic, google
+    model_name: str = "gpt-5.1"
+    research_sources: List[str] # ['web', 'social', 'academic', 'internal']
+    deep_research_mode: bool = False # Added for Deep Research Toggle
     
+    research_guidelines: List[str]
+    target_audience: str
+    extra_context: str
+
     style_profile: Dict[str, Any]
     research_data: List[Dict[str, Any]]
+    
+    # Deep Research State - use operator.add to handle concurrent updates
+    deep_research_results: Annotated[List[ResearchResult], operator.add]
+    research_loop_count: int
+    is_sufficient: bool
+    generated_queries: List[str] # For the deep research loop
+    
+    internal_links: List[Dict[str, str]]  # Added for Internal Indexer
     
     outline: List[Section]
     
@@ -22,5 +53,6 @@ class AgentState(TypedDict):
     
     draft_sections: Dict[str, str]
     critique_feedback: Dict[str, str]
+    section_retries: Dict[str, int]  # Added for Reflexion Loop
     
     final_content: str

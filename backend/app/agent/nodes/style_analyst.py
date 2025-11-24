@@ -3,11 +3,11 @@ from app.services.firecrawl_service import firecrawl_service
 from app.services.llm_service import llm_service
 from langchain_core.prompts import ChatPromptTemplate
 import json
+from typing import List, Dict, Any
 
-async def style_analyst_node(state: AgentState):
-    urls = state.get("tone_urls", [])
+async def analyze_style(urls: List[str], use_local: bool = False, model_provider: str = "openai", model_name: str = "gpt-5.1") -> Dict[str, Any]:
     if not urls:
-        return {"style_profile": {"tone": "neutral", "formatting": "standard"}}
+        return {"tone": "neutral", "formatting": "standard"}
     
     scraped_content = []
     for url in urls:
@@ -19,7 +19,7 @@ async def style_analyst_node(state: AgentState):
             print(f"Error scraping {url}: {e}")
             
     if not scraped_content:
-        return {"style_profile": {"tone": "neutral", "formatting": "standard"}}
+        return {"tone": "neutral", "formatting": "standard"}
 
     combined_text = "\n\n---\n\n".join(scraped_content)
     
@@ -33,13 +33,39 @@ async def style_analyst_node(state: AgentState):
         """
     )
     
-    llm = llm_service.get_llm(model_name="gpt-4o", temperature=0)
+    llm = llm_service.get_llm(
+        model_provider=model_provider,
+        model_name=model_name,
+        temperature=0, 
+        use_local=use_local
+    )
     chain = prompt | llm
     response = await chain.ainvoke({"text": combined_text})
     
     try:
-        style_profile = json.loads(response.content)
+        # Handle potential markdown code blocks in response
+        content = response.content
+        if "```json" in content:
+            content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
+            
+        style_profile = json.loads(content)
     except:
-        style_profile = {"tone": "professional", "note": "parsing_failed"}
+        style_profile = {"tone": "professional", "note": "parsing_failed", "raw_output": response.content}
+        
+    return style_profile
+
+async def style_analyst_node(state: AgentState):
+    # If style_profile is already provided (e.g. from DB), skip analysis
+    if state.get("style_profile") and state["style_profile"].get("tone"):
+        return {"style_profile": state["style_profile"]}
+
+    urls = state.get("tone_urls", [])
+    use_local = state.get("use_local", False)
+    model_provider = state.get("model_provider", "openai")
+    model_name = state.get("model_name", "gpt-5.1")
+    
+    style_profile = await analyze_style(urls, use_local=use_local, model_provider=model_provider, model_name=model_name)
         
     return {"style_profile": style_profile}

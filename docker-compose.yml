@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15
+    container_name: blog_gen_db
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: blog_gen
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U user -d blog_gen"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: blog_gen_backend
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - ./backend/.env
+    environment:
+      # Override DATABASE_URL for Docker networking (uses 'db' service name)
+      - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/blog_gen
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - /app/venv
+      - /app/__pycache__
+
+  frontend:
+    build: ./frontend
+    container_name: blog_gen_frontend
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      # Frontend runs in browser, so it needs localhost to reach the backend
+      # Backend port 8000 is exposed to host, so browser can access it
+      - VITE_API_URL=http://localhost:8000
+
+volumes:
+  postgres_data:
