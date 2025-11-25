@@ -39,7 +39,176 @@ Our platform is an end-to-end agentic workflow that mimics a human editorial tea
 
 ---
 
-## 📌 C. Architecture Diagram
+## 📌 C. Architecture Diagrams
+
+### C.1 System Architecture (Simplified)
+
+```mermaid
+flowchart LR
+    subgraph User["👤 User"]
+        Browser["Browser"]
+    end
+
+    subgraph App["📱 Application"]
+        Frontend["React Frontend<br/>:5173"]
+        Backend["FastAPI Backend<br/>:8000"]
+        Agent["LangGraph Agent"]
+    end
+
+    subgraph Data["💾 Data"]
+        DB[("PostgreSQL")]
+        Vectors[("Pinecone")]
+    end
+
+    subgraph AI["🤖 AI Services"]
+        LLMs["LLMs<br/>(OpenAI/Claude/Gemini)"]
+        Local["Ollama<br/>(Local)"]
+    end
+
+    subgraph Research["🔍 Research"]
+        Web["Firecrawl"]
+        Academic["Arxiv"]
+    end
+
+    Browser <-->|"HTTP/SSE"| Frontend
+    Frontend <-->|"REST API"| Backend
+    Backend --> Agent
+    Agent --> DB
+    Agent --> Vectors
+    Agent --> LLMs
+    Agent -.->|"Privacy Mode"| Local
+    Agent --> Web
+    Agent --> Academic
+```
+
+### C.2 System Architecture (Detailed)
+
+A comprehensive view of how all components interact across the full stack.
+
+```mermaid
+flowchart TB
+    subgraph Client["🖥️ Client Layer"]
+        Browser["Browser"]
+    end
+
+    subgraph Frontend["⚛️ Frontend (React + Vite)"]
+        UI["React UI<br/>Shadcn + Tailwind"]
+        SSE["SSE Client<br/>(EventSource)"]
+        Axios["Axios<br/>HTTP Client"]
+        Mermaid["Mermaid.js<br/>Diagrams"]
+    end
+
+    subgraph Backend["🐍 Backend (FastAPI)"]
+        API["FastAPI Server<br/>:8000"]
+        
+        subgraph APIRoutes["API Routes"]
+            AuthAPI["/auth"]
+            BinsAPI["/bins"]
+            IngestionAPI["/ingestion"]
+            AgentAPI["/agent"]
+            ProfilesAPI["/profiles"]
+            ThreadsAPI["/threads"]
+        end
+        
+        subgraph Services["Services Layer"]
+            LLMService["LLM Service"]
+            EmbeddingService["Embedding Service"]
+            PineconeService["Pinecone Service"]
+            FirecrawlService["Firecrawl Service"]
+            ArxivService["Arxiv Service"]
+            ChunkingService["Chunking Service"]
+            IngestionService["Ingestion Service"]
+        end
+        
+        subgraph AgentCore["LangGraph Agent"]
+            Graph["StateGraph"]
+            Checkpointer["AsyncPostgresSaver"]
+            AgentState["Agent State"]
+        end
+    end
+
+    subgraph Database["🗄️ Database Layer"]
+        PostgreSQL[("PostgreSQL<br/>:5432")]
+        AppTables["App Tables<br/>(Users, Bins, Docs, Threads)"]
+        LangGraphTables["LangGraph Tables<br/>(Checkpoints, State)"]
+    end
+
+    subgraph ExternalServices["☁️ External Services"]
+        subgraph LLMProviders["LLM Providers"]
+            OpenAI["OpenAI<br/>(GPT-4o)"]
+            Anthropic["Anthropic<br/>(Claude)"]
+            Google["Google<br/>(Gemini)"]
+        end
+        
+        subgraph LocalLLM["Local LLM (Optional)"]
+            Ollama["Ollama<br/>:11434"]
+        end
+        
+        Pinecone[("Pinecone<br/>Vector Store")]
+        Firecrawl["Firecrawl<br/>Web Search"]
+        ArxivAPI["Arxiv API<br/>Academic Papers"]
+    end
+
+    %% Client to Frontend
+    Browser --> UI
+
+    %% Frontend Internal
+    UI --> SSE
+    UI --> Axios
+    UI --> Mermaid
+
+    %% Frontend to Backend
+    Axios -->|"REST API"| API
+    SSE -->|"Server-Sent Events"| API
+
+    %% API to Routes
+    API --> APIRoutes
+
+    %% Routes to Services
+    AuthAPI --> PostgreSQL
+    BinsAPI --> PineconeService
+    BinsAPI --> IngestionService
+    IngestionAPI --> IngestionService
+    AgentAPI --> AgentCore
+    ProfilesAPI --> PostgreSQL
+    ThreadsAPI --> PostgreSQL
+
+    %% Services to External
+    LLMService -->|"API Calls"| LLMProviders
+    LLMService -->|"Local Mode"| Ollama
+    EmbeddingService --> OpenAI
+    EmbeddingService -->|"Local Mode"| Ollama
+    PineconeService --> Pinecone
+    FirecrawlService --> Firecrawl
+    ArxivService --> ArxivAPI
+    IngestionService --> ChunkingService
+    IngestionService --> EmbeddingService
+    IngestionService --> PineconeService
+
+    %% Agent Core
+    AgentCore --> Services
+    Checkpointer --> PostgreSQL
+    Graph --> AgentState
+
+    %% Database
+    PostgreSQL --> AppTables
+    PostgreSQL --> LangGraphTables
+
+    %% Styling
+    classDef frontend fill:#61dafb,stroke:#333,color:#000
+    classDef backend fill:#009688,stroke:#333,color:#fff
+    classDef database fill:#336791,stroke:#333,color:#fff
+    classDef external fill:#ff9800,stroke:#333,color:#000
+    classDef local fill:#4caf50,stroke:#333,color:#fff
+
+    class UI,SSE,Axios,Mermaid frontend
+    class API,AuthAPI,BinsAPI,IngestionAPI,AgentAPI,ProfilesAPI,ThreadsAPI backend
+    class PostgreSQL,AppTables,LangGraphTables database
+    class OpenAI,Anthropic,Google,Pinecone,Firecrawl,ArxivAPI external
+    class Ollama local
+```
+
+### C.3 Agent Workflow
 
 The agent is orchestrated using **LangGraph**, a stateful graph-based framework.
 
