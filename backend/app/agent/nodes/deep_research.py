@@ -17,8 +17,8 @@ async def generate_query_node(state: AgentState):
     use_local = state.get("use_local", False)
     
     llm = llm_service.get_llm(
-        model_provider=state.get("model_provider", "openai"),
-        model_name=state.get("model_name", "gpt-5.1"),
+        model_provider=state.get("model_provider", "anthropic"),
+        model_name=state.get("model_name", "claude-haiku-4-5"),
         use_local=use_local
     )
     
@@ -201,8 +201,8 @@ async def reflection_node(state: AgentState):
     findings_summary = "\n\n".join([f"Query: {r.query}\nSummary: {r.summary}" for r in results])
     
     llm = llm_service.get_llm(
-        model_provider=state.get("model_provider", "openai"),
-        model_name=state.get("model_name", "gpt-5.1"),
+        model_provider=state.get("model_provider", "anthropic"),
+        model_name=state.get("model_name", "claude-haiku-4-5"),
         use_local=use_local
     )
     

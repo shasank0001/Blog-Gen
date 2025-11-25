@@ -58,6 +58,7 @@ docker-compose.override.yml
 backend/data/
 backend/uploads/
 backend/workflow_logs/
+backend/llm_logs/
 backend/server.log
 backend/*.log
 

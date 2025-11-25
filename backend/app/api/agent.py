@@ -17,6 +17,7 @@ from app.core.database import get_db
 from app.core.models import User, StyleProfile, Thread, ThreadStatus, KnowledgeBin
 from datetime import datetime, timezone
 import os
+from app.utils.workflow_summary import generate_summary_for_thread
 
 from fastapi.encoders import jsonable_encoder
 
@@ -46,11 +47,12 @@ class RunRequest(BaseModel):
     target_domain: str = ""
     selected_bins: List[str] = []
     use_local: bool = False
-    model_provider: str = "openai"
-    model_name: str = "gpt-5.1"
+    model_provider: str = "anthropic"
+    model_name: str = "claude-haiku-4-5"
     style_profile: Optional[Dict[str, Any]] = None
     research_sources: List[str] = ["web", "internal"] # Default to web and internal
     deep_research_mode: bool = False
+    blog_size: str = "medium" # small, medium, large
     
     research_guidelines: List[str] = []
     target_audience: str = ""
@@ -168,6 +170,7 @@ async def stream_agent(
         "model_name": request.model_name,
         "research_sources": request.research_sources,
         "deep_research_mode": request.deep_research_mode,
+        "blog_size": request.blog_size,
         "research_guidelines": request.research_guidelines,
         "target_audience": request.target_audience,
         "extra_context": request.extra_context,
@@ -175,7 +178,18 @@ async def stream_agent(
         "current_section_index": 0,
         "draft_sections": {},
         "critique_feedback": {},
-        "section_retries": {}
+        "section_retries": {},
+        # Initialize fields that will be set by nodes
+        "research_data": [],
+        "internal_links": [],
+        "outline": [],
+        "deep_research_results": [],
+        "research_loop_count": 0,
+        "is_sufficient": False,
+        "generated_queries": [],
+        "target_word_count": 0,  # Will be set by planner based on blog_size
+        "section_word_budgets": {},  # Will be set by planner
+        "final_content": ""
     }
     
     log_to_file(thread_id, "initial_state", initial_state)
@@ -331,6 +345,13 @@ async def resume_agent(
                     await db.commit()
                     
                     log_to_file(request.thread_id, "workflow_complete", event["data"].get("output"))
+                    
+                    # Generate Markdown summary automatically
+                    try:
+                        summary_path = generate_summary_for_thread(request.thread_id, "workflow_logs")
+                        print(f"✅ Generated workflow summary: {summary_path}")
+                    except Exception as summary_error:
+                        print(f"⚠️ Failed to generate workflow summary: {summary_error}")
                     
                     yield {
                         "event": "end",

@@ -4,7 +4,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from app.core.config import settings
 
 class LLMService:
-    def get_llm(self, model_provider: str = "openai", model_name: str = "gpt-5.1", temperature: float = 0.7, use_local: bool = False):
+    def get_llm(self, model_provider: str = "anthropic", model_name: str = "claude-haiku-4-5", temperature: float = 0.7, use_local: bool = False):
         if use_local or settings.USE_LOCAL_LLM:
             from langchain_ollama import ChatOllama
             return ChatOllama(

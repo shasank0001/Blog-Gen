@@ -4,9 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, FileText, Calendar, Clock, Download } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import MarkdownWithCitations from '@/components/custom/MarkdownWithCitations';
 import { format } from 'date-fns';
-import { Mermaid } from '@/components/custom/Mermaid';
 
 interface Thread {
   id: string;
@@ -141,23 +140,7 @@ export const History = () => {
                         {/* HTML Download omitted for simplicity as we don't have a converter handy in this file context */}
                       </div>
                       <div className="prose prose-zinc dark:prose-invert max-w-none p-4 border rounded-md bg-white dark:bg-zinc-950">
-                        <ReactMarkdown
-                          components={{
-                            code({ node, inline, className, children, ...props }: any) {
-                              const match = /language-(\w+)/.exec(className || '');
-                              if (!inline && match && match[1] === 'mermaid') {
-                                return <Mermaid chart={String(children).replace(/\n$/, '')} />;
-                              }
-                              return (
-                                <code className={className} {...props}>
-                                  {children}
-                                </code>
-                              );
-                            }
-                          }}
-                        >
-                          {threadContent || ''}
-                        </ReactMarkdown>
+                        <MarkdownWithCitations content={threadContent || ''} />
                       </div>
                     </div>
                   )}

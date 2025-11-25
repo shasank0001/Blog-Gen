@@ -106,8 +106,8 @@ async def visuals_node(state: AgentState):
     )
     
     llm = llm_service.get_llm(
-        model_provider=state.get("model_provider", "openai"),
-        model_name=state.get("model_name", "gpt-5.1"),
+        model_provider=state.get("model_provider", "anthropic"),
+        model_name=state.get("model_name", "claude-haiku-4-5"),
         use_local=state.get("use_local", False)
     )
     structured_llm = llm.with_structured_output(VisualsResult)

@@ -27,10 +27,14 @@ class AgentState(TypedDict):
     target_domain: str
     selected_bins: List[str]
     use_local: bool = False
-    model_provider: str = "openai" # openai, anthropic, google
-    model_name: str = "gpt-5.1"
+    model_provider: str = "anthropic" # openai, anthropic, google
+    model_name: str = "claude-haiku-4-5"
     research_sources: List[str] # ['web', 'social', 'academic', 'internal']
     deep_research_mode: bool = False # Added for Deep Research Toggle
+    
+    blog_size: str # 'small', 'medium', 'large'
+    target_word_count: int # 2500, 5500, 10000
+    section_word_budgets: Dict[str, int] # section_id -> word_count
     
     research_guidelines: List[str]
     target_audience: str

@@ -14,7 +14,7 @@ import {
 import { OutlineEditor } from '@/components/custom/OutlineEditor';
 import { getBins, analyzeStyle, getProfiles } from '@/lib/api';
 import { Loader2, Play, CheckCircle, ArrowLeft, ExternalLink, Wand2, ChevronRight, ChevronLeft } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import MarkdownWithCitations from '@/components/custom/MarkdownWithCitations';
 import { Link } from 'react-router-dom';
 import { AgentConsole } from '@/components/custom/AgentConsole';
 import { WorkflowStepper } from '@/components/custom/WorkflowStepper';
@@ -63,6 +63,7 @@ export const GenerationWizard = () => {
   const [isAnalyzingStyle, setIsAnalyzingStyle] = useState(false);
   const [researchSources, setResearchSources] = useState<string[]>(['web', 'internal']);
   const [deepResearchMode, setDeepResearchMode] = useState(false);
+  const [blogSize, setBlogSize] = useState<'small' | 'medium' | 'large'>('medium');
   
   // New Research Brief State
   const [targetAudience, setTargetAudience] = useState('');
@@ -208,6 +209,7 @@ export const GenerationWizard = () => {
         profile_id: (selectedProfileId && selectedProfileId !== '_none') ? selectedProfileId : undefined,
         research_sources: researchSources,
         deep_research_mode: deepResearchMode,
+        blog_size: blogSize,
         target_audience: targetAudience,
         research_guidelines: researchGuidelines.split('\n').filter(l => l.trim() !== ''),
         extra_context: extraContext
@@ -283,23 +285,7 @@ export const GenerationWizard = () => {
         <Card className="overflow-hidden">
           <CardContent className="p-8 md:p-12 bg-white dark:bg-zinc-950">
             <article className="prose prose-slate dark:prose-invert max-w-none lg:prose-lg">
-              <ReactMarkdown
-                components={{
-                  code({ node, inline, className, children, ...props }: any) {
-                    const match = /language-(\w+)/.exec(className || '');
-                    if (!inline && match && match[1] === 'mermaid') {
-                      return <Mermaid chart={String(children).replace(/\n$/, '')} />;
-                    }
-                    return (
-                      <code className={className} {...props}>
-                        {children}
-                      </code>
-                    );
-                  }
-                }}
-              >
-                {finalArticle}
-              </ReactMarkdown>
+              <MarkdownWithCitations content={finalArticle} />
             </article>
           </CardContent>
         </Card>
@@ -560,6 +546,26 @@ export const GenerationWizard = () => {
               <CardDescription>Select your AI model and privacy settings.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="space-y-4">
+                <Label>Blog Length Target</Label>
+                <Select
+                  value={blogSize}
+                  onValueChange={(value: 'small' | 'medium' | 'large') => setBlogSize(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select blog size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="small">Small (2,000-3,000 words)</SelectItem>
+                    <SelectItem value="medium">Medium (5,000-6,000 words)</SelectItem>
+                    <SelectItem value="large">Large (10,000+ words)</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  The planner will allocate word budgets across sections to meet this target.
+                </p>
+              </div>
+
               <div className="space-y-4">
                 <Label>AI Model Selection</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

@@ -23,8 +23,8 @@ async def researcher_node(state: AgentState):
 
     # --- Step 1: Generate Optimized Queries ---
     llm = llm_service.get_llm(
-        model_provider=state.get("model_provider", "openai"),
-        model_name=state.get("model_name", "gpt-5.1"),
+        model_provider=state.get("model_provider", "anthropic"),
+        model_name=state.get("model_name", "claude-haiku-4-5"),
         use_local=use_local
     )
     

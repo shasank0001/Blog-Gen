@@ -34,6 +34,12 @@ export const useAgentStream = () => {
         onopen(response) {
           if (response.ok) {
             return Promise.resolve();
+          } else if (response.status === 401 || response.status === 403) {
+            // Handle authentication errors
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+            return Promise.reject(new Error('Authentication required'));
           } else {
             return Promise.reject(new Error(`Failed to connect: ${response.statusText}`));
           }
