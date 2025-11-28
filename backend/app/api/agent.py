@@ -18,7 +18,6 @@ from app.core.models import User, StyleProfile, Thread, ThreadStatus, KnowledgeB
 from datetime import datetime, timezone
 import os
 from app.utils.workflow_summary import generate_summary_for_thread
-
 from fastapi.encoders import jsonable_encoder
 
 def log_to_file(thread_id: str, category: str, payload: Any):

@@ -29,6 +29,8 @@ services:
     environment:
       # Override DATABASE_URL for Docker networking (uses 'db' service name)
       - DATABASE_URL=postgresql+asyncpg://user:password@db:5432/blog_gen
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8000:8000"
     volumes:

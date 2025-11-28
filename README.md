@@ -142,6 +142,8 @@ graph TD
 
 ## 📌 E. How to Run the Project
 
+> **📖 Important:** After setting up the project, please read the [**Reviewer Notes & Important Information**](#-reviewer-notes--important-information) section at the end of this README. It contains critical information about expected generation times, model selection tips, and how the agent works.
+
 ### Prerequisites
 
 * Docker & Docker Compose
@@ -271,41 +273,155 @@ If you prefer to configure things manually:
 
 ### Local Privacy Mode (Ollama) Setup
 
-To run the agent without sending data to OpenAI:
+> **⚠️ This section is OPTIONAL.** You only need to set up Ollama if you want to run LLM inference locally for privacy reasons. If you're fine using cloud providers (OpenAI, Anthropic, Google), you can skip this entire section.
 
-1. Install [Ollama](https://ollama.com/).
-2. Pull the required models:
+To run the agent without sending data to cloud providers, you can use Ollama for local LLM inference.
+
+#### 🐧 Linux Setup
+
+1. **Install Ollama**
+
    ```bash
-   ollama pull qwen2.5
-   ollama pull nomic-embed-text
-   ollama serve
+   curl -fsSL https://ollama.com/install.sh | sh
    ```
-3. In the UI, toggle **"Use Local Processing"** before starting a run.
+2. **Pull the required models**
 
-Additional privacy notes:
+   ```bash
+   ollama pull gemma3:4b          # Main LLM (recommended for 8GB+ VRAM)
+   ollama pull nomic-embed-text   # For local embeddings (optional)
+   ```
+3. **Start Ollama with network access (Required for Docker)**
 
-* The UI toggle forces all agent LLM calls (style analyst, planner, writer, critic, visuals) through Ollama. To keep embeddings local too, set `USE_LOCAL_EMBEDDINGS=true` in `backend/.env` and restart the backend so ingestion + search avoid OpenAI embeddings.
+   By default, Ollama only listens on `localhost`. For Docker containers to reach it, you must bind to all interfaces:
+
+   ```bash
+   OLLAMA_HOST=0.0.0.0 ollama serve
+   ```
+
+   > **Tip:** To make this permanent, create a systemd override:
+   >
+   > ```bash
+   > sudo mkdir -p /etc/systemd/system/ollama.service.d
+   > echo -e "[Service]\nEnvironment=OLLAMA_HOST=0.0.0.0" | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+   > sudo systemctl daemon-reload
+   > sudo systemctl restart ollama
+   > ```
+   >
+4. **Configure `.env` for Docker**
+
+   In `backend/.env`, set:
+
+   ```bash
+   OLLAMA_BASE_URL=http://host.docker.internal:11434
+   OLLAMA_MODEL=gemma3:4b
+   ```
+5. **Verify connectivity from Docker**
+
+   ```bash
+   docker exec blog_gen_backend python -c "import urllib.request; print(urllib.request.urlopen('http://host.docker.internal:11434/api/tags').read()[:100])"
+   ```
+
+#### 🪟 Windows Setup
+
+1. **Install Ollama**
+
+   - Download the installer from [ollama.com/download](https://ollama.com/download)
+   - Run the installer and follow the prompts
+   - Ollama will start automatically as a system service
+2. **Pull the required models**
+   Open PowerShell or Command Prompt:
+
+   ```cmd
+   ollama pull gemma3:4b
+   ollama pull nomic-embed-text
+   ```
+3. **Configure for Docker Desktop**
+
+   Docker Desktop on Windows automatically supports `host.docker.internal`. In `backend/.env`, set:
+
+   ```bash
+   OLLAMA_BASE_URL=http://host.docker.internal:11434
+   OLLAMA_MODEL=gemma3:4b
+   ```
+4. **Verify Ollama is running**
+
+   ```cmd
+   curl http://localhost:11434/api/tags
+   ```
+
+#### 🍎 macOS Setup
+
+1. **Install Ollama**
+
+   - Download from [ollama.com/download](https://ollama.com/download)
+   - Or use Homebrew: `brew install ollama`
+2. **Pull models and configure**
+
+   ```bash
+   ollama pull gemma3:4b
+   ollama pull nomic-embed-text
+   ```
+3. **Configure `.env`**
+
+   ```bash
+   OLLAMA_BASE_URL=http://host.docker.internal:11434
+   OLLAMA_MODEL=gemma3:4b
+   ```
+
+#### Using Local Mode in the UI
+
+1. In the Generation Wizard, go to **Step 4 (Model & Settings)**
+2. Check **"Use Local Processing (Ollama)"**
+3. The cloud model selectors will be disabled, and all LLM calls will route through Ollama
+
+#### Additional Privacy Notes
+
+* The UI toggle forces all agent LLM calls (style analyst, planner, writer, critic, visuals) through Ollama.
+* To keep embeddings local too, set `USE_LOCAL_EMBEDDINGS=true` in `backend/.env` and restart the backend.
 * Firecrawl (web research) and Pinecone (vector store) remain external SaaS services. Disable the `web` source in the Generation Wizard and rely on internal bins if you cannot allow outbound data.
 
 ---
 
-## 📌 F. API Keys / Usage Notes
+## 📌 F. API Keys & Requirements
 
-To run the full cloud-hybrid version, you need the following keys in your `backend/.env` file:
+### ✅ Mandatory Requirements
 
-| Variable                  | Description                                                      | Required?                            |
-| :------------------------ | :--------------------------------------------------------------- | :----------------------------------- |
-| `OPENAI_API_KEY`        | Used for OpenAI-hosted LLMs and embeddings (unless toggled off). | Yes (unless fully local)             |
-| `PINECONE_API_KEY`      | For storing and retrieving internal document vectors.            | Yes                                  |
-| `FIRECRAWL_API_KEY`     | For scraping web pages and search results.                       | Yes                                  |
-| `DATABASE_URL`          | PostgreSQL connection string.                                    | Yes (default provided)               |
-| `SECRET_KEY`            | JWT signing key for FastAPI auth.                                | Yes                                  |
-| `ANTHROPIC_API_KEY`     | Enables Claude models when selected.                             | No (optional)                        |
-| `GOOGLE_API_KEY`        | Enables Gemini models when selected.                             | No (optional)                        |
-| `OLLAMA_BASE_URL`       | URL for local model inference.                                   | No (Default: http://localhost:11434) |
-| `USE_LOCAL_LLM`         | `true` forces every agent LLM call through Ollama.             | No                                   |
-| `USE_LOCAL_EMBEDDINGS`  | `true` switches ingestion/search embeddings to Ollama.         | No                                   |
-| `LOCAL_EMBEDDING_MODEL` | Ollama embedding model name (e.g.,`nomic-embed-text`).         | No                                   |
+These are **required** to run the application:
+
+| Variable                             | Description                             | How to Get                                                                     |
+| :----------------------------------- | :-------------------------------------- | :----------------------------------------------------------------------------- |
+| `DATABASE_URL`                     | PostgreSQL connection string            | Provided by default via Docker                                                 |
+| `SECRET_KEY`                       | JWT signing key for authentication      | Generate with:`python -c "import secrets; print(secrets.token_urlsafe(32))"` |
+| `PINECONE_API_KEY`                 | Vector database for document storage    | [pinecone.io](https://www.pinecone.io/) (free tier available)                     |
+| `FIRECRAWL_API_KEY`                | Web scraping for research               | [firecrawl.dev](https://www.firecrawl.dev/)                                       |
+| **At least ONE LLM provider:** |                                         |                                                                                |
+| `OPENAI_API_KEY`                   | OpenAI models (GPT-5, GPT-5 Mini)       | [platform.openai.com](https://platform.openai.com/api-keys)                       |
+| — OR —`ANTHROPIC_API_KEY`        | Anthropic models (Claude Sonnet, Haiku) | [console.anthropic.com](https://console.anthropic.com/)                           |
+| — OR —`GOOGLE_API_KEY`           | Google models (Gemini)                  | [aistudio.google.com](https://aistudio.google.com/apikey)                         |
+| — OR —**Ollama**             | Local models (Gemma, Qwen, Llama)       | See Ollama setup section above                                                 |
+
+### 🔧 Optional Configuration
+
+These are **optional** and only needed for specific features:
+
+| Variable                  | When You Need It                                       | Default                    |
+| :------------------------ | :----------------------------------------------------- | :------------------------- |
+| `ANTHROPIC_API_KEY`     | To use Claude models in the UI                         | Not set                    |
+| `GOOGLE_API_KEY`        | To use Gemini models in the UI                         | Not set                    |
+| `OLLAMA_BASE_URL`       | Only if using local Ollama inference                   | `http://localhost:11434` |
+| `OLLAMA_MODEL`          | Only if using local Ollama inference                   | `gemma3:4b`              |
+| `USE_LOCAL_LLM`         | Set to `true` to force all LLM calls through Ollama  | `false`                  |
+| `USE_LOCAL_EMBEDDINGS`  | Set to `true` for local embeddings (requires Ollama) | `false`                  |
+| `LOCAL_EMBEDDING_MODEL` | Only if `USE_LOCAL_EMBEDDINGS=true`                  | `nomic-embed-text`       |
+
+### 🚫 What You Can Skip
+
+| If You Don't Need...    | You Can Skip...                                                     |
+| :---------------------- | :------------------------------------------------------------------ |
+| Local/private inference | Ollama installation and all `OLLAMA_*` / `USE_LOCAL_*` settings |
+| Claude models           | `ANTHROPIC_API_KEY`                                               |
+| Gemini models           | `GOOGLE_API_KEY`                                                  |
+| OpenAI models           | `OPENAI_API_KEY` (but you need at least one LLM provider)         |
 
 ---
 
@@ -331,15 +447,9 @@ Select your preferred LLM (GPT-4o, Claude 3.5) or switch to **Local Mode (Ollama
 Before writing, the agent proposes an outline. You can drag, drop, edit, or delete sections to shape the narrative.
 ![Outline Review](assets/screenshots/step5_outline.png)
 
-**6. Agent Execution ("Glass Box")**
-Watch the agent's thought process in real-time. The UI shows active nodes (Research, Plan, Write, Critic) and live logs as they happen.
-![Agent Console](assets/screenshots/step6_process.png)
-
-**7. Final Output**
+**6. Final Output**
 The agent generates a comprehensive, SEO-optimized article with inline citations and automatically generated diagrams.
-![1764063024872](image/README/1764063024872.png)
-reference it used are listed below
-![Final Result](assets/screenshots/step7_result.png)
+![Final Result](assets/screenshots/step6_result.png)
 
 ---
 
@@ -347,3 +457,69 @@ reference it used are listed below
 
 Check out a sample blog post generated by the agent:
 [State Space Models (Mamba) vs. Transformers: Is Attention Really Dead?](./State%20Space%20Models%20(Mamba)%20vs.%20Transformers_%20Is%20Attention%20Really%20Dead_.md)
+
+---
+
+## 📋 Reviewer Notes & Important Information
+
+### ⏱️ Expected Generation Times
+
+The agent performs deep research and iterative writing, which takes time. Here's what to expect:
+
+| Blog Size        | Approximate Time | Word Count    |
+| ---------------- | ---------------- | ------------- |
+| **Small**  | ~5 minutes       | ~2,500 words  |
+| **Medium** | ~10 minutes      | ~5,500 words  |
+| **Large**  | 10+ minutes      | ~10,000 words |
+
+> **Note:** Times may vary based on research depth, number of sources, and model response speed.
+
+### 🤖 Model Selection Recommendations
+
+| Use Case                    | Recommended Model                     |
+| --------------------------- | ------------------------------------- |
+| Simple topics, quick drafts | GPT-5 Mini, Claude Haiku              |
+| Complex technical content   | **GPT-5** (full), Claude Sonnet |
+| Maximum privacy (local)     | Gemma 3 4B, Qwen 2.5                  |
+
+> **Tip:** For complex, technical blogs (AI/ML, architecture, research papers), always select **GPT-5** or **Claude Sonnet** instead of the mini/haiku variants for better reasoning and accuracy.
+
+### 🔄 Understanding the Writing Process
+
+The agent processes your blog **section by section** using a "Reflexion Loop":
+
+```
+For each section in outline:
+    1. Writer drafts the section
+    2. Critic reviews the draft
+    3. If FAIL → Writer revises (max 2 retries)
+    4. If PASS → Move to next section
+```
+
+**This means:** If your outline has 5 sections, you'll see the agent iterate 5 times (once per section). This is **normal behavior**, not a stuck loop! The "Glass Box" console shows which section is being processed.
+
+### 🐛 Troubleshooting & Support
+
+If you encounter any issues while setting up or running the project:
+
+1. **Check the logs:** `docker-compose logs -f backend`
+2. **Common issues:**
+
+   - Ollama connection failed → Ensure Ollama is running with `OLLAMA_HOST=0.0.0.0`
+   - Database errors → Run `alembic upgrade head` to apply migrations
+   - API key errors → Verify all required keys are set in `backend/.env`
+3. **Still stuck?** Please raise an issue on GitHub!
+
+---
+
+### 📬 Contact
+
+For questions, issues, or feedback:
+
+| Channel                 | Contact                                                                               |
+| ----------------------- | ------------------------------------------------------------------------------------- |
+| **GitHub Issues** | [github.com/shasank0001/Blog-Gen/issues](https://github.com/shasank0001/Blog-Gen/issues) |
+| **Email**         | shasank12344@gmail.com                                                                |
+| **Phone**         | +91 9392598130                                                                        |
+
+---
