@@ -520,6 +520,5 @@ For questions, issues, or feedback:
 | ----------------------- | ------------------------------------------------------------------------------------- |
 | **GitHub Issues** | [github.com/shasank0001/Blog-Gen/issues](https://github.com/shasank0001/Blog-Gen/issues) |
 | **Email**         | shasank12344@gmail.com                                                                |
-| **Phone**         | +91 9392598130                                                                        |
 
 ---
