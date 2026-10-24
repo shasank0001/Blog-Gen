@@ -70,12 +70,14 @@ def build_graph():
         if "academic" in sources and queries:
             tasks.append(Send("deep_academic_research", {"query": queries[0]}))
         
-        return tasks
+        # Internal search lives in the finalizer. An empty fan-out otherwise ends
+        # the graph before internal retrieval, planning and human approval.
+        return tasks or "deep_finalize"
 
     builder.add_conditional_edges(
         "deep_generate_query", 
         route_to_research_tasks, 
-        ["deep_web_research", "deep_social_research", "deep_academic_research"]
+        ["deep_web_research", "deep_social_research", "deep_academic_research", "deep_finalize"]
     )
     builder.add_edge("deep_web_research", "deep_reflection")
     builder.add_edge("deep_social_research", "deep_reflection")

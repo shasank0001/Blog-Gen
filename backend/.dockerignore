@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+venv
+.venv
+__pycache__
+**/__pycache__
+*.pyc
+.pytest_cache
+tests
+uploads
+data
+llm_logs
+workflow_logs
+*.log
+.git

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getBins, createBin, deleteBin, getBinFiles, updateBin, deleteDocument, resyncBin } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,9 +37,6 @@ export const KnowledgeBase = () => {
   const [editBinName, setEditBinName] = useState('');
   const [isResyncing, setIsResyncing] = useState(false);
 
-  useEffect(() => {
-    fetchBins();
-  }, []);
 
   useEffect(() => {
     if (selectedBin) {
@@ -51,20 +48,20 @@ export const KnowledgeBase = () => {
     }
   }, [selectedBin]);
 
-  const fetchBins = async () => {
+  const fetchBins = useCallback(async () => {
     setIsLoadingBins(true);
     try {
       const data = await getBins();
       setBins(data);
-      if (!selectedBin && data.length > 0) {
-          setSelectedBin(data[0]);
-      }
+      setSelectedBin(current => current || data[0] || null);
     } catch (error) {
       console.error('Failed to fetch bins', error);
     } finally {
       setIsLoadingBins(false);
     }
-  };
+  }, []);
+
+  useEffect(() => { void fetchBins(); }, [fetchBins]);
 
   const fetchFiles = async (binId: string) => {
     setIsLoadingFiles(true);

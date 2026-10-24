@@ -1,6 +1,19 @@
 # Content Strategist Agent (Blog-Gen)
 
-An enterprise-grade AI agent that turns your internal documents into authoritative, SEO-optimized articles without your data ever leaving your infrastructure.
+An AI workflow that turns internal documents and research into cited, editable articles. Supports cloud models and local Ollama inference.
+
+## Deploy with Docker only
+
+The production setup builds the frontend, serves the API on the same address, keeps PostgreSQL private, and runs migrations before starting the API and worker. You only need Docker with Compose v2 and Bash; Python and Node run in containers.
+
+```bash
+./deploy.sh init
+# Edit .env.production: configure your domain and provider keys/rates as needed.
+./deploy.sh up
+./deploy.sh create-user you@example.com
+```
+
+The default preview is [http://localhost:8080](http://localhost:8080). Public deployment, HTTPS, upgrades, backup/restore and troubleshooting are covered in [the deployment guide](docs/deployment.md). Public registration is disabled by default. The commands below using `docker-compose.yml` are for development.
 
 ---
 
@@ -27,7 +40,7 @@ Our platform is an end-to-end agentic workflow that mimics a human editorial tea
 
 **Core Value Proposition:**
 
-> "Turn your internal documents into authoritative, SEO-optimized articles without your data ever leaving your infrastructure."
+> "Turn internal documents and research into cited articles with an editable outline, draft history and visible generation progress."
 
 ### Key Features:
 
@@ -147,7 +160,7 @@ graph TD
 ### Prerequisites
 
 * Docker & Docker Compose
-* Node.js 18+
+* Node.js 22+ (host development only)
 * Python 3.11+
 * **Ollama** (Optional, for local privacy mode)
 
@@ -155,7 +168,7 @@ graph TD
 
 We have provided automated scripts to get you up and running quickly.
 
-#### Option 1: Docker Compose (Recommended)
+#### Option 1: Docker Compose (Development)
 
 The easiest way to run the entire stack (Frontend + Backend + Database) in isolated containers.
 
@@ -170,12 +183,13 @@ The easiest way to run the entire stack (Frontend + Backend + Database) in isola
 
    ```bash
    cp backend/.env.example backend/.env
+   python3 backend/generate_secret.py  # Generate a unique JWT signing secret
    # Edit backend/.env with your API keys
    ```
 3. **Run with Docker Compose**
 
    ```bash
-   docker-compose up --build
+   docker compose up --build
    ```
 
    * **Frontend:** http://localhost:5173
@@ -224,15 +238,16 @@ If you prefer to configure things manually:
 
    ```bash
    cp backend/.env.example backend/.env
+   python3 backend/generate_secret.py  # Generate a unique JWT signing secret
    # Edit backend/.env with your API keys (see Section F)
    ```
 
-   At a minimum set `DATABASE_URL`, `OPENAI_API_KEY`, `FIRECRAWL_API_KEY`, `PINECONE_API_KEY`, and a unique `SECRET_KEY`. Optional knobs such as `USE_LOCAL_LLM`/`USE_LOCAL_EMBEDDINGS` can stay at their defaults until you need them.
+   At a minimum set `DATABASE_URL` and a unique `SECRET_KEY`. Configure your model provider and prices for generation, Firecrawl for web research, and Pinecone plus an embedding provider for document retrieval. Unused provider keys can be empty.
 2. **Start Database (Docker)**
 
    ```bash
    cd backend
-   docker-compose up -d
+   docker compose up -d --wait db
    ```
 
    * This starts the PostgreSQL database container.
@@ -258,6 +273,8 @@ If you prefer to configure things manually:
    # Run the server
    uvicorn app.main:app --reload
    ```
+
+   In another terminal with the same backend environment, start `python -m app.worker`. Jobs remain queued until a worker is running.
 5. **Start Frontend**
    Open a new terminal:
 
@@ -275,7 +292,7 @@ If you prefer to configure things manually:
 
 > **⚠️ This section is OPTIONAL.** You only need to set up Ollama if you want to run LLM inference locally for privacy reasons. If you're fine using cloud providers (OpenAI, Anthropic, Google), you can skip this entire section.
 
-To run the agent without sending data to cloud providers, you can use Ollama for local LLM inference.
+Use Ollama to keep LLM inference local. Document retrieval still uses Pinecone, and web research uses external services; this is not a fully offline mode.
 
 #### 🐧 Linux Setup
 
@@ -522,3 +539,89 @@ For questions, issues, or feedback:
 | **Email**         | shasank12344@gmail.com                                                                |
 
 ---
+
+## Development checks
+
+Backend tests use dummy credentials and mocked provider/network boundaries; no live AI service is required:
+
+```bash
+cd backend
+python -m pip install -r requirements-dev.txt
+python -m pytest
+```
+
+Frontend regression tests use Node's built-in test runner and the installed TypeScript compiler:
+
+```bash
+cd frontend
+npm ci
+npm test
+npm run lint
+npm run build
+```
+
+The backend now rejects placeholder JWT secrets and secrets shorter than 32 characters. For a newly copied `.env.example`, run `python3 backend/generate_secret.py` from the repository root. To rotate another existing secret, generate a new value with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and set `SECRET_KEY` in `backend/.env`; existing login tokens will no longer be valid.
+
+## Drafts, durable runs and spending limits
+
+The workspace now has **Drafts**, **Runs** and **Spending** pages. Finished runs save an editable article independently of their graph checkpoints. Drafts autosave after a short pause, retain immutable revisions and use version checks to prevent one tab from overwriting another. Failed saves retain a recovery buffer in the same browser tab. Restoring a revision creates a new revision. Earlier articles can be opened from **Earlier articles** and copied into Drafts for editing.
+
+Generation runs in a separate PostgreSQL-backed worker. Closing the page only disconnects its progress subscription. Reopen a run to review its outline, resume saved work, cancel it or open its completed draft. A stopped step can be repeated during recovery; the worker retains uncertain model-call reservations instead of assuming those requests were free.
+
+### Upgrade and start
+
+Apply the new database migration before starting the updated app:
+
+```bash
+cd backend
+alembic upgrade head
+```
+
+Docker Compose starts the API, worker, frontend and database. The local start scripts now launch the worker too. For manual development, run the API and worker in separate terminals with the same environment:
+
+```bash
+# Terminal 1, in backend with its environment activated
+uvicorn app.main:app --reload
+
+# Terminal 2, also in backend
+python -m app.worker
+```
+
+Run `npm run dev` in `frontend` in another terminal. `WORKER_CONCURRENCY` defaults to 2 and supports 1–8 jobs per worker process. PostgreSQL advisory locks prevent a second worker from executing the same live job. Expired leases recover after a worker stops. PostgreSQL checkpoints are required; there is no silent in-memory fallback. At most 10 active runs can be queued by one user.
+
+### Configure generation cost estimates
+
+Cloud generation requires an operator-supplied price for its exact `provider:model` in `LLM_PRICING_JSON` in `backend/.env`. The structure below is an illustration, **not current provider pricing**; replace the model and both rates with your provider's values:
+
+```dotenv
+LLM_PRICING_JSON='{"openai:your-model-id":{"input_per_million":"1","output_per_million":"2","max_output_tokens":4096}}'
+DEFAULT_MONTHLY_LIMIT_USD=10
+WORKER_CONCURRENCY=2
+```
+
+Rates are USD per million input/output tokens. Each call snapshots its rates, reserves a conservative amount before starting, limits output tokens, and reconciles the reservation against provider-reported usage. Automatic model retries are disabled. Run limits are set in the generator or when resuming a stopped run; the monthly limit is editable in Spending. A monthly limit of zero blocks charged calls while allowing zero-cost local inference. Accounting periods follow the UTC calendar month of call initiation.
+
+These are **estimated generation LLM charges**, not a provider billing integration. Search, embeddings, standalone style analysis, taxes, cached-token discounts and provider-specific billing adjustments are outside the estimate. Ollama LLM inference is priced at zero in the ledger; infrastructure costs are not measured. Unpriced cloud models are blocked. An interrupted call or missing token usage retains its reservation. If reported usage exceeds a reservation, the worker stops before continuing; an external provider's invoice cannot be guaranteed by this app's estimate.
+
+The call ledger shows unresolved call IDs. After verifying the corresponding usage with the provider, an operator with server access can reconcile an unresolved hold:
+
+```bash
+# In backend; substitute the call ID and verified token counts
+python -m app.reconcile_usage CALL_UUID --input-tokens 100 --output-tokens 200
+```
+
+Only unresolved calls can be reconciled. The UI cannot discard uncertain charges or alter recorded usage. Existing historical runs are not retroactively costed. Cloud prices must be kept up to date by the operator.
+
+### API and integration checks
+
+New API groups are `/api/v1/jobs`, `/api/v1/articles` and `/api/v1/usage`. Job creation requires a per-user idempotency key; GET event subscriptions replay from an event cursor and do not start generation. The old POST `/agent/stream` and `/agent/resume` endpoints return HTTP 410 so they cannot bypass job persistence and spending checks. The old state endpoint remains authenticated for earlier article reads.
+
+Backend unit tests run without external AI services. To include PostgreSQL integration tests, first migrate a **disposable test database**, then set its URL:
+
+```bash
+BLOG_GEN_TEST_DATABASE_URL='postgresql+asyncpg://test:password@localhost/test_database' python -m pytest
+```
+
+The integration suite uses real PostgreSQL transactions/checkpoints and deterministic generation nodes, covering ownership, duplicate requests, concurrent saves, revision restoration, budget reservations, worker restart, event replay, live-job exclusion, cancellation and budget-limited resume. It does not call paid providers.
+
+For a frontend hosted on a different origin, set `VITE_API_URL` to the backend origin and configure `CORS_ORIGINS` as a JSON list of allowed frontend origins in the backend environment.

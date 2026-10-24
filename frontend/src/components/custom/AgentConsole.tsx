@@ -2,8 +2,22 @@ import { useEffect, useRef } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import type { AgentEvent } from '@/hooks/useAgentStream';
+import type { AgentEvent } from '@/lib/agentStream';
 import { Terminal, CheckCircle2, AlertCircle, Loader2, Link as LinkIcon, FileText, List, User } from 'lucide-react';
+
+interface NodeOutput extends Record<string, unknown> {
+  update?: Record<string, unknown>;
+  goto?: string;
+  internal_links?: (string | { url: string; title: string })[];
+  style_profile?: Record<string, unknown>;
+  research_data?: { title: string; source: string; url?: string; content?: string }[];
+  outline?: { title: string; intent?: string }[] | { sections?: { title: string; intent?: string }[] };
+  final_content?: string;
+  draft_sections?: Record<string, string>;
+  critique_feedback?: Record<string, string>;
+  section_retries?: Record<string, number>;
+  current_section_index?: number;
+}
 
 interface AgentConsoleProps {
   events: AgentEvent[];
@@ -11,18 +25,21 @@ interface AgentConsoleProps {
   isConnected: boolean;
 }
 
-const RenderOutput = ({ output }: { output: any }) => {
+const RenderOutput = ({ output }: { output: unknown }) => {
   if (!output) return null;
 
-  let data = output;
+  let parsed: unknown = output;
   if (typeof output === 'string') {
     try {
-      data = JSON.parse(output);
+      parsed = JSON.parse(output);
     } catch {
       // If it's just a string, display it as is
       return <p className="text-zinc-300 whitespace-pre-wrap">{output}</p>;
     }
   }
+
+  if (!parsed || typeof parsed !== 'object') return <p>{String(parsed)}</p>;
+  const data = parsed as NodeOutput;
 
   // Handle Command objects (they have 'update' and 'goto' properties)
   if (data.update || data.goto) {
@@ -55,9 +72,9 @@ const RenderOutput = ({ output }: { output: any }) => {
           <span className="font-semibold">Found {data.internal_links.length} Internal Links</span>
         </div>
         <div className="grid gap-1 pl-6">
-          {data.internal_links.slice(0, 5).map((link: string, i: number) => (
-            <a key={i} href={link} target="_blank" rel="noopener noreferrer" className="text-xs text-zinc-400 hover:text-blue-400 truncate block">
-              {link}
+          {data.internal_links.slice(0, 5).map((link, i: number) => (
+            <a key={i} href={typeof link === 'string' ? link : link.url} target="_blank" rel="noopener noreferrer" className="text-xs text-zinc-400 hover:text-blue-400 truncate block">
+              {typeof link === 'string' ? link : link.title}
             </a>
           ))}
           {data.internal_links.length > 5 && (
@@ -97,7 +114,7 @@ const RenderOutput = ({ output }: { output: any }) => {
           <span className="font-semibold">Research Gathered ({data.research_data.length} sources)</span>
         </div>
         <div className="grid gap-2 pl-6 max-h-40 overflow-y-auto pr-2">
-          {data.research_data.map((item: any, i: number) => (
+          {data.research_data.map((item, i: number) => (
             <div key={i} className="bg-zinc-900/50 p-2 rounded border border-zinc-800 text-xs">
               <div className="flex items-center justify-between mb-1">
                 <span className="font-semibold text-zinc-300 truncate max-w-[200px]">{item.title}</span>
@@ -129,7 +146,7 @@ const RenderOutput = ({ output }: { output: any }) => {
             <span className="font-semibold">Generated Outline ({sections.length} sections)</span>
           </div>
           <div className="pl-6 space-y-1">
-            {sections.map((section: any, i: number) => (
+            {sections.map((section, i: number) => (
               <div key={i} className="text-xs">
                 <div className="flex items-start gap-2">
                   <span className="text-zinc-500 font-mono">{i + 1}.</span>
@@ -289,7 +306,7 @@ export const AgentConsole = ({ events, activeNode, isConnected }: AgentConsolePr
   };
 
   // Insert phase separators
-  const eventsWithPhases = events.reduce((acc: any[], event, index) => {
+  const eventsWithPhases = events.reduce<((AgentEvent & { key: string }) | { type: 'phase_separator'; phase: string; key: string })[]>((acc, event, index) => {
     const currentPhase = getPhase(event.step);
     const prevPhase = index > 0 ? getPhase(events[index - 1].step) : null;
     
@@ -391,7 +408,7 @@ export const AgentConsole = ({ events, activeNode, isConnected }: AgentConsolePr
                     {event.log && (
                       <p className="text-zinc-300 text-sm whitespace-pre-wrap leading-relaxed">{event.log}</p>
                     )}
-                    {event.output && (
+                    {event.output !== undefined && (
                       <RenderOutput output={event.output} />
                     )}
                   </div>

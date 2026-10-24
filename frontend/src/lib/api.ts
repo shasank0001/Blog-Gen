@@ -1,9 +1,7 @@
 import axios from 'axios';
+import { API_URL } from './apiConfig';
 
 // Use environment variable if available, fallback to localhost for local dev
-const API_URL = import.meta.env.VITE_API_URL 
-  ? `${import.meta.env.VITE_API_URL}/api/v1`
-  : 'http://localhost:8000/api/v1';
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -25,7 +23,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401 || error.response?.status === 403) {
+    if (error.response?.status === 401) {
       localStorage.removeItem('token');
       localStorage.removeItem('user');
       window.location.href = '/login';
@@ -44,6 +42,11 @@ export const loginUser = async (email: string, password: string) => {
 
 export const getMe = async () => {
   const response = await api.get('/auth/me');
+  return response.data;
+};
+
+export const getAuthConfig = async (): Promise<{ allow_registration: boolean }> => {
+  const response = await axios.get(`${API_URL}/auth/config`);
   return response.data;
 };
 
@@ -117,7 +120,7 @@ export const createProfile = async (name: string, description: string, toneUrls:
   return response.data;
 };
 
-export const updateProfile = async (id: string, data: { name?: string; description?: string; tone_urls?: string[]; style_dna?: any }) => {
+export const updateProfile = async (id: string, data: { name?: string; description?: string; tone_urls?: string[]; style_dna?: Record<string, unknown> }) => {
   const response = await api.put(`/profiles/${id}`, data);
   return response.data;
 };
@@ -128,34 +131,6 @@ export const deleteProfile = async (id: string) => {
 };
 
 // --- Agent API ---
-
-export const runAgent = async (payload: {
-  topic: string;
-  tone_urls?: string[];
-  profile_id?: string;
-  selected_bins: string[];
-  target_domain?: string;
-  use_local?: boolean;
-  model_provider?: string;
-  model_name?: string;
-  style_profile?: any;
-  research_sources?: string[]; // ['web', 'social', 'academic', 'internal']
-}) => {
-  // Note: This is now mostly used for testing, as the real app uses SSE via fetch/EventSource
-  // But we might keep it for non-streaming calls if needed, or remove it.
-  // The SSE implementation is in useAgentStream hook.
-  // We'll update this to match the new schema just in case.
-  const response = await api.post('/agent/stream', payload); 
-  return response.data;
-};
-
-export const resumeAgent = async (threadId: string, approvedOutline: any[]) => {
-  const response = await api.post('/agent/resume', {
-    thread_id: threadId,
-    approved_outline: approvedOutline,
-  });
-  return response.data;
-};
 
 export const analyzeStyle = async (urls: string[], useLocal: boolean = false) => {
   const response = await api.post('/agent/analyze-style', { urls, use_local: useLocal });

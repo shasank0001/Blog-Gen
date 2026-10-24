@@ -1,27 +1,23 @@
-#!/bin/bash
-set -e
+#!/bin/sh
+set -eu
 
-# Wait for PostgreSQL to be ready
-echo "Waiting for PostgreSQL to be ready..."
-max_attempts=30
-attempt=0
-
-while ! nc -z db 5432; do
-    attempt=$((attempt + 1))
-    if [ $attempt -eq $max_attempts ]; then
-        echo "ERROR: PostgreSQL not ready after $max_attempts attempts"
-        exit 1
-    fi
-    echo "Waiting for database... ($attempt/$max_attempts)"
-    sleep 1
-done
-
-echo "PostgreSQL is ready!"
-
-# Run database migrations
-echo "Running database migrations..."
+# Development entrypoint. Production uses a dedicated migration service.
+python - <<'PY'
+import time
+import psycopg
+from app.core.config import settings
+dsn = settings.DATABASE_URL.replace('postgresql+asyncpg://', 'postgresql://')
+for attempt in range(30):
+    try:
+        with psycopg.connect(dsn, connect_timeout=2):
+            break
+    except psycopg.OperationalError:
+        if attempt == 29:
+            raise SystemExit('PostgreSQL is not ready; check its health and database settings')
+        time.sleep(1)
+PY
 alembic upgrade head
-
-# Start the application
-echo "Starting uvicorn server..."
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+if [ "${UVICORN_RELOAD:-false}" = true ]; then
+    exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+fi
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000

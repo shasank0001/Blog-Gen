@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 mermaid.initialize({
   startOnLoad: false,
   theme: 'default',
-  securityLevel: 'loose',
+  securityLevel: 'strict',
 });
 
 interface MermaidProps {

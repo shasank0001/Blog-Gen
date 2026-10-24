@@ -11,6 +11,7 @@ client = TestClient(app)
 @pytest.fixture
 def mock_db():
     mock = AsyncMock()
+    mock.add = MagicMock()
     return mock
 
 @pytest.fixture

@@ -1,28 +1,27 @@
-import httpx
+import asyncio
 import gzip
+import io
+from urllib.parse import urlsplit
 from bs4 import BeautifulSoup
 from app.agent.state import AgentState
-from typing import Dict, Any, List, Set
+from typing import Dict, Any
 from app.core.database import AsyncSessionLocal
 from app.core.models import InternalIndex
 from sqlalchemy import select, delete
 from datetime import datetime, timedelta, timezone
+from app.services.safe_fetch import fetch_public_bytes, MAX_RESPONSE_BYTES
 
-async def fetch_url_content(client: httpx.AsyncClient, url: str) -> bytes | None:
+async def fetch_url_content(url: str) -> bytes | None:
     try:
-        response = await client.get(url, timeout=10.0)
-        if response.status_code != 200:
-            return None
-        
-        content = response.content
-        if url.endswith(".gz"):
-            try:
-                content = gzip.decompress(content)
-            except Exception:
-                pass
+        content = await fetch_public_bytes(url)
+        if content and content.startswith(b"\x1f\x8b"):
+            with gzip.GzipFile(fileobj=io.BytesIO(content)) as compressed:
+                content = compressed.read(MAX_RESPONSE_BYTES + 1)
+            if len(content) > MAX_RESPONSE_BYTES:
+                raise ValueError("Decompressed sitemap exceeds the size limit")
         return content
-    except Exception as e:
-        print(f"Error fetching {url}: {e}")
+    except Exception as exc:
+        print(f"Skipping sitemap URL {url}: {exc}")
         return None
 
 def parse_sitemap_content(content: bytes):
@@ -55,10 +54,10 @@ async def internal_indexer_node(state: AgentState) -> Dict[str, Any]:
         return {"internal_links": []}
 
     # Ensure domain has protocol
-    if not target_domain.startswith("http"):
+    if "://" not in target_domain:
         target_domain = f"https://{target_domain}"
     
-    domain_key = target_domain.replace("https://", "").replace("http://", "").split("/")[0]
+    domain_key = urlsplit(target_domain).netloc.lower()
 
     # Check Cache
     async with AsyncSessionLocal() as db:
@@ -82,66 +81,46 @@ async def internal_indexer_node(state: AgentState) -> Dict[str, Any]:
     internal_links = []
     visited_urls = set()
     
-    headers = {"User-Agent": "Mozilla/5.0 (compatible; ContentStrategistBot/1.0)"}
-    async with httpx.AsyncClient(headers=headers, follow_redirects=True) as client:
-        
-        # 1. Find Sitemap URL
-        sitemap_urls = []
-        
-        # Check robots.txt
-        try:
-            robots_resp = await client.get(f"{target_domain}/robots.txt", timeout=5.0)
-            if robots_resp.status_code == 200:
-                for line in robots_resp.text.splitlines():
+    # Bound total work even for sitemap indexes that never contain page URLs.
+    try:
+        async with asyncio.timeout(60):
+            sitemap_urls = []
+            robots = await fetch_url_content(f"{target_domain}/robots.txt")
+            if robots:
+                for line in robots.decode("utf-8", errors="replace").splitlines():
                     if line.lower().startswith("sitemap:"):
                         sitemap_urls.append(line.split(":", 1)[1].strip())
-        except Exception:
-            pass
-            
-        # Add defaults
-        sitemap_urls.extend([
-            f"{target_domain}/sitemap.xml",
-            f"{target_domain}/sitemap_index.xml",
-            f"{target_domain}/wp-sitemap.xml"
-        ])
-        
-        # Deduplicate sitemap URLs
-        sitemap_queue = list(dict.fromkeys(sitemap_urls))
-        processed_sitemaps = set()
-        
-        while sitemap_queue:
-            current_sitemap = sitemap_queue.pop(0)
-            if current_sitemap in processed_sitemaps:
-                continue
-            processed_sitemaps.add(current_sitemap)
-            
-            print(f"Fetching sitemap: {current_sitemap}")
-            content = await fetch_url_content(client, current_sitemap)
-            if not content:
-                continue
-                
-            urls, is_index = parse_sitemap_content(content)
-            
-            if is_index:
-                # Add children to queue
-                for child_url in urls:
-                    if child_url not in processed_sitemaps:
-                        sitemap_queue.append(child_url)
-            else:
-                # Extract links
-                for url in urls:
-                    if url not in visited_urls:
-                        visited_urls.add(url)
-                        # Simple title extraction from URL slug
-                        slug = url.rstrip("/").split("/")[-1]
-                        title = slug.replace("-", " ").replace("_", " ").title()
-                        if not title:
-                            title = "Home"
-                        internal_links.append({"url": url, "title": title})
-                        
-            # Limit to avoid infinite loops or huge sites
-            if len(internal_links) > 5000:
-                break
+            sitemap_urls.extend([
+                f"{target_domain}/sitemap.xml",
+                f"{target_domain}/sitemap_index.xml",
+                f"{target_domain}/wp-sitemap.xml",
+            ])
+            sitemap_queue = list(dict.fromkeys(sitemap_urls))[:50]
+            processed_sitemaps = set()
+            while sitemap_queue and len(processed_sitemaps) < 50 and len(internal_links) < 5000:
+                current_sitemap = sitemap_queue.pop(0)
+                if current_sitemap in processed_sitemaps:
+                    continue
+                processed_sitemaps.add(current_sitemap)
+                content = await fetch_url_content(current_sitemap)
+                if not content:
+                    continue
+                urls, is_index = parse_sitemap_content(content)
+                if is_index:
+                    for child in urls:
+                        if child not in processed_sitemaps and child not in sitemap_queue:
+                            sitemap_queue.append(child)
+                        if len(sitemap_queue) >= 50:
+                            break
+                else:
+                    for url in urls:
+                        if url not in visited_urls and len(internal_links) < 5000:
+                            visited_urls.add(url)
+                            slug = url.rstrip("/").split("/")[-1]
+                            title = slug.replace("-", " ").replace("_", " ").title() or "Home"
+                            internal_links.append({"url": url, "title": title})
+    except TimeoutError:
+        print("Sitemap crawl reached its time limit")
 
     # Save to Cache
     if internal_links:

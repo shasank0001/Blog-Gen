@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 # Colors
 GREEN='\033[0;32m'
@@ -9,11 +11,13 @@ NC='\033[0m'
 # Function to kill background processes on exit
 cleanup() {
     echo -e "\n${BLUE}Shutting down services...${NC}"
-    kill $(jobs -p) 2>/dev/null
-    exit
+    pids="$(jobs -p)"
+    if [ -n "$pids" ]; then kill $pids 2>/dev/null || true; fi
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
 
 # Validate setup was completed
 if [ ! -d "backend/venv" ]; then
@@ -40,6 +44,9 @@ echo -e "${GREEN}Starting Blog-Gen...${NC}"
 echo -e "${BLUE}Starting Backend (Port 8000)...${NC}"
 cd backend
 source venv/bin/activate
+docker compose up -d --wait --wait-timeout 60 db
+alembic upgrade head || exit 1
+python -m app.worker &
 uvicorn app.main:app --reload &
 BACKEND_PID=$!
 cd ..
@@ -47,7 +54,7 @@ cd ..
 # Start Frontend
 echo -e "${BLUE}Starting Frontend (Port 5173)...${NC}"
 cd frontend
-npm run dev &
+node node_modules/vite/bin/vite.js &
 FRONTEND_PID=$!
 cd ..
 

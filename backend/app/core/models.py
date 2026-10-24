@@ -94,3 +94,6 @@ class InternalIndex(Base):
     title = Column(String, nullable=True)
     last_scraped = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None))
 
+
+# Register workspace tables for Alembic and database metadata.
+from app.core.workspace_models import GenerationJob, JobEvent, Article, ArticleRevision, SpendingAccount, LLMCall

@@ -1,7 +1,7 @@
 import { Outlet, Link, NavLink } from 'react-router-dom';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/context/auth';
 import { Button } from '@/components/ui/button';
-import { LogOut, BookOpen, PenTool, LayoutDashboard, User, History } from 'lucide-react';
+import { LogOut, BookOpen, PenTool, LayoutDashboard, User, History, FileText, Wallet, ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const Layout = () => {
@@ -12,7 +12,10 @@ export const Layout = () => {
     { href: '/generate', label: 'Generator', icon: PenTool },
     { href: '/knowledge', label: 'Knowledge Base', icon: BookOpen },
     { href: '/profiles', label: 'Style Profiles', icon: User },
-    { href: '/history', label: 'History', icon: History },
+    { href: '/drafts', label: 'Drafts', icon: FileText },
+    { href: '/runs', label: 'Runs', icon: ListChecks },
+    { href: '/costs', label: 'Spending', icon: Wallet },
+    { href: '/history', label: 'Earlier articles', icon: History },
   ];
 
   return (
@@ -55,9 +58,9 @@ export const Layout = () => {
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-zinc-900 dark:text-zinc-50 truncate">
-                {user?.username || 'User'}
+                {user?.email || 'User'}
               </p>
-              <p className="text-xs text-zinc-500 truncate">Pro Plan</p>
+              <Link className="text-xs text-zinc-500 underline" to="/costs">Generation spending</Link>
             </div>
           </div>
           <Button 
@@ -76,12 +79,10 @@ export const Layout = () => {
         {/* Mobile Header */}
         <header className="md:hidden h-16 border-b bg-white dark:bg-zinc-900 flex items-center px-4 justify-between sticky top-0 z-20">
            <Link to="/" className="font-bold text-lg">ContentStrat</Link>
-           <Button variant="ghost" size="icon">
-             <LayoutDashboard className="h-5 w-5" />
-           </Button>
+           <details className="relative"><summary className="cursor-pointer rounded border px-3 py-2 text-sm">Menu</summary><nav className="absolute right-0 mt-2 w-56 bg-white dark:bg-zinc-900 border rounded-lg p-2 shadow-lg">{navItems.map(item => <Link key={item.href} className="block p-3 text-sm hover:bg-muted" to={item.href} onClick={event => event.currentTarget.closest('details')?.removeAttribute('open')}>{item.label}</Link>)}<Button variant="ghost" onClick={logout}>Logout</Button></nav></details>
         </header>
 
-        <div className="flex-1 p-8 overflow-auto">
+        <div className="flex-1 p-4 md:p-8 overflow-auto">
           <div className="max-w-6xl mx-auto">
              <Outlet />
           </div>

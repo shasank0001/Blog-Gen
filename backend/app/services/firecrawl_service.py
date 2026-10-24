@@ -3,7 +3,15 @@ from app.core.config import settings
 
 class FirecrawlService:
     def __init__(self):
-        self.app = Firecrawl(api_key=settings.FIRECRAWL_API_KEY)
+        self._app = None
+
+    @property
+    def app(self):
+        if self._app is None:
+            if not settings.FIRECRAWL_API_KEY:
+                raise ValueError("Configure FIRECRAWL_API_KEY to use web research or style URL scraping")
+            self._app = Firecrawl(api_key=settings.FIRECRAWL_API_KEY)
+        return self._app
 
     def search(self, query: str, limit: int = 5):
         print(f"FirecrawlService: Searching for '{query}'")

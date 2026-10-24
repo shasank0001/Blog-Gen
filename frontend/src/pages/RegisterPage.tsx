@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '@/lib/apiError';
 import { useState } from 'react';
 import { registerUser } from '@/lib/api';
 import { Button } from '@/components/ui/button';
@@ -6,6 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { useRegistration } from '@/hooks/useRegistration';
 
 export const RegisterPage = () => {
   const [email, setEmail] = useState('');
@@ -14,9 +16,11 @@ export const RegisterPage = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const { allowed, error: configError } = useRegistration();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (allowed !== true) return;
     if (password !== confirmPassword) {
       setError("Passwords don't match");
       return;
@@ -26,8 +30,8 @@ export const RegisterPage = () => {
     try {
       await registerUser(email, password);
       navigate('/login');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to register');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to register'));
     } finally {
       setIsLoading(false);
     }
@@ -41,7 +45,8 @@ export const RegisterPage = () => {
           <CardDescription>Get started with Content Strategist</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          {allowed !== true && <p role={configError ? 'alert' : 'status'}>{configError ? 'Could not check registration availability. Refresh to try again.' : allowed === false ? 'Registration is disabled. Ask your administrator for an account.' : 'Checking registration availability…'}</p>}
+          {allowed === true && <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -79,7 +84,7 @@ export const RegisterPage = () => {
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : 'Register'}
             </Button>
-          </form>
+          </form>}
         </CardContent>
         <CardFooter className="flex justify-center">
           <p className="text-sm text-gray-500">

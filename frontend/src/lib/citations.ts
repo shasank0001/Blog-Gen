@@ -1,170 +1,88 @@
-/**
- * Citation Processing Utilities
- * 
- * Handles detection and transformation of citation tags in markdown content.
- * Supports formats like [web_3_3], [int_253b_L4_2], [acad_1_1], [social_2_1]
- */
-
+/** Join references by stable source ID, never by citation appearance order. */
 export interface Citation {
   id: string;
   number: number;
   title?: string;
   url?: string;
 }
-
 export interface ProcessedContent {
   content: string;
   citations: Citation[];
   referencesSection: string;
 }
+interface Reference { title: string; url?: string; id?: string }
+const referencesPattern = /##\s+References\s*\n([\s\S]*?)(?=\n##|\n#|$)/i;
+const sourcePattern = /^(?:web|int|acad|social|deep)_|^user_context$/i;
+const unescapeMarkdown = (value: string) => value.replace(/\\([\\[\]])/g, '$1');
 
-/**
- * Extract reference section from markdown content
- */
-export function extractReferences(markdown: string): { title: string; url?: string; id?: string }[] {
-  const references: { title: string; url?: string; id?: string }[] = [];
-  
-  // Find the References section
-  const refMatch = markdown.match(/##\s+References\s*\n([\s\S]*?)(?=\n##|\n#|$)/i);
-  if (!refMatch) return references;
-  
-  const refSection = refMatch[1];
-  
-  // Parse markdown list items with optional links
-  // Formats: - [Title](url) or - Title (Internal Document)
-  const lines = refSection.split('\n');
-  
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith('-')) continue;
-    
-    // Try to match markdown link: - [Title](url)
-    const linkMatch = trimmed.match(/^-\s*\[([^\]]+)\]\(([^)]+)\)/);
-    if (linkMatch) {
-      references.push({
-        title: linkMatch[1],
-        url: linkMatch[2]
-      });
-      continue;
-    }
-    
-    // Try to match plain text: - Title (Internal Document)
-    const plainMatch = trimmed.match(/^-\s*(.+?)(?:\s*\(Internal Document\))?$/);
-    if (plainMatch) {
-      references.push({
-        title: plainMatch[1]
-      });
-    }
-  }
-  
-  return references;
-}
-
-/**
- * Find all citation tags in content (e.g., [web_3_3], [int_abc_1])
- */
-export function findCitationTags(content: string): string[] {
-  // Match citation patterns: [word_something] but not markdown links
-  // Exclude patterns that are markdown links: [text](url) or ![alt](url)
-  const citations: string[] = [];
-  const citationRegex = /\[([a-zA-Z0-9_\-]+)\]/g;
-  
-  // Remove markdown links and images first to avoid false matches
-  const cleanContent = content
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '') // Remove images
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, ''); // Remove links
-  
-  let match;
-  while ((match = citationRegex.exec(cleanContent)) !== null) {
-    const tag = match[1];
-    // Only include if it looks like a source ID (has underscore and numbers)
-    if (tag.match(/^(web|int|acad|social|deep)_/i)) {
-      citations.push(tag);
-    }
-  }
-  
-  return [...new Set(citations)]; // Remove duplicates
-}
-
-/**
- * Build citation map from content
- */
-export function buildCitationMap(markdown: string): Map<string, Citation> {
-  const citationMap = new Map<string, Citation>();
-  
-  // Extract citations from content
-  const citationTags = findCitationTags(markdown);
-  
-  // Extract references
-  const references = extractReferences(markdown);
-  
-  // Assign numbers to citations in order of appearance
-  citationTags.forEach((tag, index) => {
-    const citation: Citation = {
-      id: tag,
-      number: index + 1,
-    };
-    
-    // Try to match with reference if available
-    if (references[index]) {
-      citation.title = references[index].title;
-      citation.url = references[index].url;
-    }
-    
-    citationMap.set(tag, citation);
+export function extractReferences(markdown: string): Reference[] {
+  const section = markdown.match(referencesPattern)?.[1];
+  if (!section) return [];
+  return section.split('\n').filter(line => line.trim().startsWith('-')).map(line => {
+    let text = line.trim().replace(/^-\s*/, '');
+    const idMatch = text.match(/^\[([\w-]+)\]\s+/);
+    const id = idMatch && sourcePattern.test(idMatch[1]) ? idMatch[1] : undefined;
+    if (id) text = text.slice(idMatch![0].length);
+    const link = text.match(/^\[((?:\\.|[^\]])+)\]\((?:<([^>]+)>|(.+))\)$/);
+    return link
+      ? { id, title: unescapeMarkdown(link[1]), url: link[2] || link[3] }
+      : { id, title: unescapeMarkdown(text.replace(/\s*\(Internal Document\)$/, '')) };
   });
-  
-  return citationMap;
 }
 
-/**
- * Process markdown content to make citations clickable
- * Converts [source_id] tags to clickable superscript numbers
- */
+export function findCitationTags(content: string): string[] {
+  // References and code examples are not in-text citations.
+  const prose = content.replace(referencesPattern, '')
+    .replace(/```[\s\S]*?```|`[^`]*`/g, '')
+    .replace(/!?\[[^\]]*\]\([^)]+\)/g, '');
+  return [...new Set([...prose.matchAll(/\[([\w-]+)\]/g)]
+    .map(match => match[1]).filter(tag => sourcePattern.test(tag)))];
+}
+
+export function buildCitationMap(markdown: string): Map<string, Citation> {
+  const tags = findCitationTags(markdown);
+  const references = extractReferences(markdown);
+  const byId = new Map(references.filter(ref => ref.id).map(ref => [ref.id!, ref]));
+  // Old publisher output had no IDs but always sorted references by source ID.
+  // Only infer that historical mapping when the counts match exactly.
+  if (references.length === tags.length && references.every(ref => !ref.id)) {
+    [...tags].sort().forEach((tag, index) => byId.set(tag, references[index]));
+  }
+  const result = new Map<string, Citation>();
+  for (const tag of tags) {
+    const reference = byId.get(tag);
+    if (reference) result.set(tag, { id: tag, number: result.size + 1,
+      title: reference.title, url: reference.url });
+  }
+  return result;
+}
+
+const escapeHtml = (value: string) => value.replace(/[&<>"']/g,
+  char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]!);
+const publicLink = (value?: string) => value && /^https?:\/\//i.test(value) ? value : undefined;
+
 export function processCitations(markdown: string): ProcessedContent {
   const citationMap = buildCitationMap(markdown);
-  
-  let processedContent = markdown;
-  
-  // Replace citation tags with HTML anchor links
-  citationMap.forEach((citation, tag) => {
-    const regex = new RegExp(`\\[${tag}\\]`, 'g');
-    const replacement = `<sup><a href="#ref-${tag}" class="citation-link" title="${citation.title || tag}">[${citation.number}]</a></sup>`;
-    processedContent = processedContent.replace(regex, replacement);
-  });
-  
-  // Add IDs to references section for anchor linking
-  const refMatch = processedContent.match(/(##\s+References\s*\n)([\s\S]*?)(?=\n##|\n#|$)/i);
-  if (refMatch) {
-    const refSection = refMatch[2];
-    const lines = refSection.split('\n');
-    const processedLines: string[] = [];
-    
-    let refIndex = 0;
-    const citationArray = Array.from(citationMap.entries());
-    
-    for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('-') && refIndex < citationArray.length) {
-        const [tag, citation] = citationArray[refIndex];
-        // Keep the content on same line with proper span wrapping
-        const content = line.substring(line.indexOf('-') + 1).trim();
-        processedLines.push(`<div id="ref-${tag}" style="margin-bottom: 0.5rem;"><strong>${citation.number}.</strong> ${content}</div>`);
-        refIndex++;
-      } else if (trimmed) {
-        processedLines.push(line);
-      }
-    }
-    
-    processedContent = processedContent.replace(
-      refMatch[0],
-      `${refMatch[1]}${processedLines.join('\n')}\n`
-    );
+  const match = markdown.match(referencesPattern);
+  const section = match?.[0] || '';
+  let prose = markdown.replace(referencesPattern, '');
+  // Keep code and existing Markdown links intact, even if their labels look like IDs.
+  prose = prose.replace(/(```[\s\S]*?```|`[^`]*`|!?\[[^\]]*\]\([^)]+\))|\[([\w-]+)\]/g,
+    (whole, protectedText: string | undefined, tag: string | undefined) => {
+      if (protectedText || !tag) return whole;
+      const citation = citationMap.get(tag);
+      return citation ? `<sup><a href="#ref-${tag}" class="citation-link" title="${escapeHtml(citation.title || tag)}">[${citation.number}]</a></sup>` : whole;
+    });
+  if (match && citationMap.size) {
+    const references = [...citationMap.values()].map(citation => {
+      const title = escapeHtml(citation.title || citation.id);
+      const url = publicLink(citation.url);
+      const label = url ? `<a href="${escapeHtml(url)}">${title}</a>` : title;
+      return `<div id="ref-${citation.id}"><strong>${citation.number}.</strong> ${label}</div>`;
+    });
+    prose += `## References\n\n${references.join('\n')}\n`;
+  } else {
+    prose += section;
   }
-  
-  return {
-    content: processedContent,
-    citations: Array.from(citationMap.values()),
-    referencesSection: refMatch ? refMatch[0] : ''
-  };
+  return { content: prose, citations: [...citationMap.values()], referencesSection: section };
 }

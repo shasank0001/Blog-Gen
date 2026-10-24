@@ -1,4 +1,5 @@
 @echo off
+cd /d "%~dp0"
 echo Starting Blog-Gen...
 
 echo Validating setup...
@@ -25,6 +26,12 @@ if not exist frontend\node_modules (
 
 echo Starting Backend...
 cd backend
+call venv\Scripts\activate
+docker compose up -d --wait --wait-timeout 60 db
+if errorlevel 1 exit /b 1
+alembic upgrade head
+if errorlevel 1 exit /b 1
+start "Blog-Gen Worker" cmd /k "call venv\Scripts\activate && python -m app.worker"
 :: Opens a new window for the backend
 start "Blog-Gen Backend" cmd /k "call venv\Scripts\activate && uvicorn app.main:app --reload"
 cd ..

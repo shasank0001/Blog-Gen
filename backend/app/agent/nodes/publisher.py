@@ -17,7 +17,7 @@ def publisher_node(state: AgentState):
         final_doc += content + "\n\n"
         
         # Find all [source_id] tags regardless of prefix, but ignore markdown links
-        matches = re.findall(r'\[([a-zA-Z0-9_\-]+)\]', content)
+        matches = re.findall(r'(?<!!)\[([a-zA-Z0-9_-]+)\](?!\()', content)
         for match in matches:
             if match in source_map:
                 used_source_ids.add(match)
@@ -29,11 +29,13 @@ def publisher_node(state: AgentState):
         for sid in sorted(used_source_ids):
             source = source_map.get(sid)
             if source:
-                title = source.get("title", "Unknown Source")
+                title = str(source.get("title") or "Unknown Source")
+                title = title.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+                title = title.replace("\n", " ").replace("\r", " ")
                 url = source.get("url")
-                if url:
-                    final_doc += f"- [{title}]({url})\n"
+                if url and url.startswith(("https://", "http://")):
+                    final_doc += f"- [{sid}] [{title}]({url})\n"
                 else:
-                    final_doc += f"- {title} (Internal Document)\n"
+                    final_doc += f"- [{sid}] {title} (Internal Document)\n"
                     
     return {"final_content": final_doc}

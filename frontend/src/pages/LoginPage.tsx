@@ -1,5 +1,6 @@
+import { apiErrorMessage } from '@/lib/apiError';
 import { useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
+import { useAuth } from '@/context/auth';
 import { loginUser, getMe, api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { useNavigate, Link } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
+import { useRegistration } from '@/hooks/useRegistration';
 
 export const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -15,6 +17,7 @@ export const LoginPage = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const { allowed: registrationAllowed } = useRegistration();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,21 +25,13 @@ export const LoginPage = () => {
     setError('');
     try {
       const data = await loginUser(email, password);
-      // Assuming backend returns { access_token: string, user: { id: string, username: string } }
-      // Adjust based on actual backend response, standard OAuth2 returns access_token
-      // We might need to fetch user details separately or backend includes it.
-      // For now assuming backend returns user object too or we decode token.
-      // Let's assume the backend returns { access_token: "...", user: { ... } } for simplicity
-      // If standard OAuth2, we'd decode JWT.
-      
-      // We will fetch the user details using the token
       api.defaults.headers.common['Authorization'] = `Bearer ${data.access_token}`;
       const user = await getMe();
       
       login(data.access_token, user);
       navigate('/');
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to login');
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Failed to login'));
     } finally {
       setIsLoading(false);
     }
@@ -80,12 +75,13 @@ export const LoginPage = () => {
           </form>
         </CardContent>
         <CardFooter className="flex justify-center">
-          <p className="text-sm text-gray-500">
+          {registrationAllowed === true && <p className="text-sm text-gray-500">
             Don't have an account?{' '}
             <Link to="/register" className="text-blue-600 hover:underline">
               Register
             </Link>
-          </p>
+          </p>}
+          {registrationAllowed === false && <p className="text-sm text-gray-500">Ask your administrator for an account.</p>}
         </CardFooter>
       </Card>
     </div>

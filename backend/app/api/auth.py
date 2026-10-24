@@ -11,9 +11,14 @@ from app.schemas import Token, UserCreate, UserResponse
 from app.api import deps
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+from app.core.config import settings
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
+
+@router.get("/config")
+def auth_config():
+    return {"allow_registration": settings.ALLOW_REGISTRATION}
 
 @router.post("/register", response_model=UserResponse)
 @limiter.limit("5/minute")
@@ -29,6 +34,8 @@ async def register_user(
     - Hashes password.
     - Creates user record.
     """
+    if not settings.ALLOW_REGISTRATION:
+        raise HTTPException(status_code=403, detail="Registration is disabled. Ask your administrator for an account.")
     try:
         result = await db.execute(select(User).where(User.email == user_in.email))
         user = result.scalars().first()
@@ -75,7 +82,7 @@ async def login_for_access_token(
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
         
-    access_token_expires = timedelta(minutes=30) # Should use settings
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = security.create_access_token(
         subject=user.id, expires_delta=access_token_expires
     )

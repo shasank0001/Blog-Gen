@@ -1,75 +1,50 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { api, getMe } from '@/lib/api';
+import { AuthContext } from './auth';
+import type { User } from './auth';
 
-interface User {
-  id: string;
-  email: string;
-  is_active: boolean;
-}
-
-interface AuthContextType {
-  user: User | null;
-  token: string | null;
-  login: (token: string, user: User) => void;
-  logout: () => void;
-  isAuthenticated: boolean;
-}
-
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
-  const [token, setToken] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
+  const [isLoading, setIsLoading] = useState(() => !!localStorage.getItem('token'));
 
   useEffect(() => {
-    const initAuth = async () => {
-      const storedToken = localStorage.getItem('token');
-      if (storedToken) {
-        setToken(storedToken);
-        // Set default header for axios
-        api.defaults.headers.common['Authorization'] = `Bearer ${storedToken}`;
-        
-        try {
-          const userData = await getMe();
-          setUser(userData);
-          localStorage.setItem('user', JSON.stringify(userData));
-        } catch (error) {
-          console.error("Failed to fetch user", error);
-          // If token is invalid, logout
-          logout();
-        }
-      }
-    };
-    initAuth();
+    const storedToken = localStorage.getItem('token');
+    if (!storedToken) return;
+    let active = true;
+    getMe().then(userData => {
+      if (!active) return;
+      setUser(userData);
+      localStorage.setItem('user', JSON.stringify(userData));
+    }).catch(() => {
+      if (!active) return;
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      delete api.defaults.headers.common.Authorization;
+    }).finally(() => { if (active) setIsLoading(false); });
+    return () => { active = false; };
   }, []);
 
   const login = (newToken: string, newUser: User) => {
     setToken(newToken);
     setUser(newUser);
+    setIsLoading(false);
     localStorage.setItem('token', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
-    api.defaults.headers.common['Authorization'] = `Bearer ${newToken}`;
+    api.defaults.headers.common.Authorization = `Bearer ${newToken}`;
   };
-
   const logout = () => {
     setToken(null);
     setUser(null);
+    setIsLoading(false);
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    delete api.defaults.headers.common['Authorization'];
+    delete api.defaults.headers.common.Authorization;
   };
-
-  return (
-    <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token }}>
-      {children}
-    </AuthContext.Provider>
-  );
-};
-
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  return <AuthContext.Provider value={{ user, token, login, logout, isAuthenticated: !!token && !!user, isLoading }}>
+    {children}
+  </AuthContext.Provider>;
 };

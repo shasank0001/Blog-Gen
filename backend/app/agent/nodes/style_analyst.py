@@ -3,6 +3,7 @@ from app.services.firecrawl_service import firecrawl_service
 from app.services.llm_service import llm_service
 from langchain_core.prompts import ChatPromptTemplate
 import json
+import asyncio
 from typing import List, Dict, Any
 
 async def analyze_style(urls: List[str], use_local: bool = False, model_provider: str = "anthropic", model_name: str = "claude-haiku-4-5") -> Dict[str, Any]:
@@ -17,7 +18,7 @@ async def analyze_style(urls: List[str], use_local: bool = False, model_provider
     for url in urls:
         try:
             print(f"[Style Analyst] Scraping {url}...")
-            result = firecrawl_service.scrape(url)
+            result = await asyncio.to_thread(firecrawl_service.scrape, url)
             
             # Handle both dict and Document object formats
             if result:

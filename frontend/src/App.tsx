@@ -1,3 +1,8 @@
+import { Runs } from '@/pages/Runs';
+import { RunDetail } from '@/pages/RunDetail';
+import { Drafts } from '@/pages/Drafts';
+import { DraftEditor } from '@/pages/DraftEditor';
+import { Costs } from '@/pages/Costs';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from '@/context/AuthContext';
 import { ProtectedRoute } from '@/components/custom/ProtectedRoute';
@@ -26,6 +31,11 @@ function App() {
                 <Route path="/generate" element={<GenerationWizard />} />
                 <Route path="/knowledge" element={<KnowledgeBase />} />
                 <Route path="/profiles" element={<Profiles />} />
+                <Route path="/runs" element={<Runs />} />
+                <Route path="/runs/:id" element={<RunDetail />} />
+                <Route path="/drafts" element={<Drafts />} />
+                <Route path="/drafts/:id" element={<DraftEditor />} />
+                <Route path="/costs" element={<Costs />} />
                 <Route path="/history" element={<History />} />
               </Route>
             </Route>

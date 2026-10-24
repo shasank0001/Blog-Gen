@@ -1,0 +1,34 @@
+{
+    admin off
+}
+
+# Container-only probe; this port is never published by Compose.
+http://:8081 {
+    respond /healthz "ok" 200
+}
+
+{$SITE_ADDRESS::80} {
+    encode zstd gzip
+    header {
+        -Server
+        X-Content-Type-Options nosniff
+        Referrer-Policy strict-origin-when-cross-origin
+    }
+    @api path /api/* /health/* /docs /docs/* /openapi.json /redoc
+    handle @api {
+        reverse_proxy backend:8000 {
+            flush_interval -1
+        }
+    }
+    handle /assets/* {
+        root * /srv
+        header Cache-Control "public, max-age=31536000, immutable"
+        file_server
+    }
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        header Cache-Control "no-cache"
+        file_server
+    }
+}

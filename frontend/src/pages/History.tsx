@@ -1,4 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { createArticle } from '@/lib/workspaceApi';
+import { apiErrorMessage } from '@/lib/apiError';
+import { useEffect, useState, useRef } from 'react';
 import { getThreads, getAgentState } from '@/lib/api';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -21,6 +24,11 @@ export const History = () => {
   const [selectedThread, setSelectedThread] = useState<string | null>(null);
   const [threadContent, setThreadContent] = useState<string | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
+  const [hasContent, setHasContent] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
+  const selectedRef = useRef<string | null>(null);
 
   useEffect(() => {
     fetchThreads();
@@ -39,27 +47,42 @@ export const History = () => {
 
   const handleViewThread = async (threadId: string) => {
     if (selectedThread === threadId) {
+      selectedRef.current = null;
+      setHasContent(false);
       setSelectedThread(null);
       setThreadContent(null);
       return;
     }
 
+    selectedRef.current = threadId;
+    setHasContent(false);
     setSelectedThread(threadId);
     setContentLoading(true);
     try {
       const state = await getAgentState(threadId);
+      if (selectedRef.current !== threadId) return;
       // Check if final_content exists in values
       if (state.values && state.values.final_content) {
         setThreadContent(state.values.final_content);
+        setHasContent(true);
       } else {
         setThreadContent("No content available for this thread.");
       }
     } catch (error) {
+      if (selectedRef.current !== threadId) return;
       console.error("Failed to fetch thread state", error);
       setThreadContent("Error loading content.");
     } finally {
-      setContentLoading(false);
+      if (selectedRef.current === threadId) setContentLoading(false);
     }
+  };
+
+  const editCopy = async (topic: string) => {
+    if (!hasContent || !threadContent) return;
+    setCopying(true); setError('');
+    try { const draft = await createArticle(topic, threadContent); navigate(`/drafts/${draft.id}`); }
+    catch (problem) { setError(apiErrorMessage(problem, 'Could not create an editable copy')); }
+    finally { setCopying(false); }
   };
 
   const downloadMarkdown = (content: string, filename: string) => {
@@ -77,10 +100,11 @@ export const History = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">History</h1>
-        <p className="text-muted-foreground">View past content generation runs.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Earlier articles</h1>
+        <p className="text-muted-foreground">View articles created before durable runs. Open an article to edit a copy in Drafts.</p>
       </div>
 
+      {error && <p role="alert">{error}</p>}
       {loading ? (
         <div className="flex justify-center p-12">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -133,6 +157,7 @@ export const History = () => {
                   ) : (
                     <div className="space-y-4">
                       <div className="flex justify-end gap-2">
+                        {hasContent && <Button disabled={copying} onClick={() => void editCopy(thread.topic)}>Edit a copy</Button>}
                         <Button variant="outline" size="sm" onClick={() => downloadMarkdown(threadContent || '', thread.topic)}>
                           <Download className="h-4 w-4 mr-2" />
                           Markdown

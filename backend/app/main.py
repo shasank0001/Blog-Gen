@@ -1,8 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
-from app.api import ingestion, agent, auth, bins, profiles, threads
-from app.core.database import init_db
+from app.api import ingestion, agent, auth, bins, profiles, threads, jobs, articles, usage, health
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -15,23 +14,23 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Allow frontend origin
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def on_startup():
-    # await init_db()
-    pass
-
+app.include_router(health.router, tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(bins.router, prefix="/api/v1/bins", tags=["bins"])
 app.include_router(profiles.router, prefix="/api/v1/profiles", tags=["profiles"])
 app.include_router(threads.router, prefix="/api/v1/threads", tags=["threads"])
 app.include_router(ingestion.router, prefix="/api/v1", tags=["ingestion"])
 app.include_router(agent.router, prefix="/api/v1/agent", tags=["agent"])
+
+app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+app.include_router(articles.router, prefix="/api/v1/articles", tags=["articles"])
+app.include_router(usage.router, prefix="/api/v1/usage", tags=["usage"])
 
 @app.get("/")
 def read_root():

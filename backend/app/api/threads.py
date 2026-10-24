@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, exists
 from typing import List, Optional
 from app.core.database import get_db
 from app.api import deps
 from app.core.models import User, Thread, ThreadStatus
+from app.core.workspace_models import GenerationJob
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
@@ -28,7 +29,7 @@ async def list_threads(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(deps.get_current_user)
 ):
-    stmt = select(Thread).where(Thread.user_id == current_user.id).order_by(desc(Thread.created_at)).offset(skip).limit(limit)
+    stmt = select(Thread).where(Thread.user_id == current_user.id, ~exists(select(GenerationJob.id).where(GenerationJob.id == Thread.id))).order_by(desc(Thread.created_at)).offset(skip).limit(limit)
     result = await db.execute(stmt)
     threads = result.scalars().all()
     return threads

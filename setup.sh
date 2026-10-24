@@ -1,4 +1,6 @@
 #!/bin/bash
+set -euo pipefail
+cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -35,6 +37,7 @@ cd backend
 if [ ! -f .env ]; then
     echo "Creating .env file from .env.example..."
     cp .env.example .env
+    python3 generate_secret.py
     echo -e "${YELLOW}IMPORTANT: Please update backend/.env with your API keys after this script finishes!${NC}"
 else
     echo ".env file already exists."
@@ -42,7 +45,7 @@ fi
 
 # Start Database
 echo "Starting PostgreSQL container..."
-docker-compose up -d
+docker compose up -d --wait --wait-timeout 60 db
 
 # Create virtual environment if it doesn't exist
 if [ ! -d "venv" ]; then
@@ -59,20 +62,6 @@ pip install -r requirements.txt
 
 # Run Migrations
 echo "Running database migrations..."
-# Wait for database to be ready
-echo "Waiting for database..."
-max_attempts=30
-attempt=0
-until docker exec blog_gen_db pg_isready -U user -d blog_gen > /dev/null 2>&1; do
-    attempt=$((attempt + 1))
-    if [ $attempt -eq $max_attempts ]; then
-        echo -e "${YELLOW}Warning: Database not ready after 30 seconds. Continuing anyway...${NC}"
-        break
-    fi
-    echo "Waiting for database to be ready... ($attempt/$max_attempts)"
-    sleep 1
-done
-echo "Database is ready!"
 alembic upgrade head
 
 cd ..
@@ -82,7 +71,7 @@ echo -e "\n${GREEN}>>> Setting up Frontend...${NC}"
 cd frontend
 
 echo "Installing Node dependencies..."
-npm install
+npm ci
 
 cd ..
 

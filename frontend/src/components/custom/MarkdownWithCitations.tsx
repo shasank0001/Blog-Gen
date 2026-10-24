@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import rehypeRaw from 'rehype-raw';
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import { processCitations } from '@/lib/citations';
 import { Mermaid } from './Mermaid';
 
@@ -45,27 +46,20 @@ export default function MarkdownWithCitations({ content, className = '' }: Markd
       `}</style>
       
       <ReactMarkdown
-        rehypePlugins={[rehypeRaw]}
+        rehypePlugins={[rehypeRaw, [rehypeSanitize, { ...defaultSchema, attributes: { ...defaultSchema.attributes, a: [...(defaultSchema.attributes?.a || []), ['className', 'citation-link']] } }]]}
         components={{
-          code({ node, inline, className, children, ...props }: any) {
+          code({ className, children }) {
             const match = /language-(\w+)/.exec(className || '');
-            if (!inline && match && match[1] === 'mermaid') {
+            if (match && match[1] === 'mermaid') {
               return <Mermaid chart={String(children).replace(/\n$/, '')} />;
             }
             return (
-              <code className={className} {...props}>
+              <code className={className}>
                 {children}
               </code>
             );
           },
-          // Allow HTML for citation links
-          span({ node, ...props }: any) {
-            return <span {...props} />;
-          },
-          sup({ node, ...props }: any) {
-            return <sup {...props} />;
-          },
-          a({ node, href, children, ...props }: any) {
+          a({ href, children, className, title }) {
             // Smooth scroll for citation links
             if (href?.startsWith('#ref-')) {
               return (
@@ -73,7 +67,7 @@ export default function MarkdownWithCitations({ content, className = '' }: Markd
                   href={href}
                   onClick={(e) => {
                     e.preventDefault();
-                    const target = document.getElementById(href.substring(1));
+                    const target = document.getElementById(`user-content-${href.substring(1)}`);
                     if (target) {
                       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
                       // Highlight the reference briefly
@@ -83,13 +77,14 @@ export default function MarkdownWithCitations({ content, className = '' }: Markd
                       }, 2000);
                     }
                   }}
-                  {...props}
+                  className={className}
+                  title={title}
                 >
                   {children}
                 </a>
               );
             }
-            return <a href={href} {...props}>{children}</a>;
+            return <a href={href} className={className} title={title}>{children}</a>;
           }
         }}
       >

@@ -1,0 +1,108 @@
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  image: ${BLOG_GEN_PROJECT_NAME:-blog-gen-production}-backend:local
+  env_file:
+    - ${BLOG_GEN_ENV_FILE:-.env.production}
+  environment:
+    DATABASE_URL: postgresql+asyncpg://blog_gen:${POSTGRES_PASSWORD:?Run ./deploy.sh init first}@db:5432/blog_gen
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp
+  cap_drop: [ALL]
+  volumes:
+    - uploads:/app/uploads
+    - llm_logs:/app/llm_logs
+  logging: *logging
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blog_gen
+      POSTGRES_DB: blog_gen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run ./deploy.sh init first}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U blog_gen -d blog_gen"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    logging: *logging
+
+  migrate:
+    <<: *app
+    command: [alembic, upgrade, head]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  backend:
+    <<: *app
+    build:
+      context: ./backend
+      target: production
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=4)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 6
+    stop_grace_period: 40s
+
+  worker:
+    <<: *app
+    command: [python, -m, app.worker]
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, python, -m, app.worker_health]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    stop_grace_period: 40s
+
+  frontend:
+    build:
+      context: ./frontend
+      target: production
+    image: ${BLOG_GEN_PROJECT_NAME:-blog-gen-production}-frontend:local
+    restart: unless-stopped
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${PUBLIC_BIND_ADDRESS:-127.0.0.1}:${HTTP_PORT:-8080}:80"
+      - "${PUBLIC_BIND_ADDRESS:-127.0.0.1}:${HTTPS_PORT:-8443}:443"
+    volumes:
+      - caddy_data:/data
+      - caddy_config:/config
+    read_only: true
+    tmpfs: [/tmp]
+    depends_on:
+      backend:
+        condition: service_healthy
+    logging: *logging
+
+volumes:
+  postgres_data:
+  uploads:
+  llm_logs:
+  caddy_data:
+  caddy_config:

@@ -5,11 +5,19 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 class PineconeService:
     def __init__(self):
-        self.pc = Pinecone(api_key=settings.PINECONE_API_KEY)
         self.index_name = settings.PINECONE_INDEX_NAME
         self.dimension = 1536
-        self._ensure_index_exists()
-        self.index = self.pc.Index(self.index_name)
+        self._index = None
+
+    @property
+    def index(self):
+        # Importing API modules must not contact Pinecone (including during tests
+        # and migrations). Initialize the service only when it is actually used.
+        if self._index is None:
+            self.pc = Pinecone(api_key=settings.PINECONE_API_KEY)
+            self._ensure_index_exists()
+            self._index = self.pc.Index(self.index_name)
+        return self._index
 
     def _ensure_index_exists(self):
         if self.index_name not in self.pc.list_indexes().names():

@@ -11,15 +11,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { OutlineEditor } from '@/components/custom/OutlineEditor';
 import { getBins, analyzeStyle, getProfiles } from '@/lib/api';
-import { Loader2, Play, CheckCircle, ArrowLeft, ExternalLink, Wand2, ChevronRight, ChevronLeft } from 'lucide-react';
-import MarkdownWithCitations from '@/components/custom/MarkdownWithCitations';
-import { Link } from 'react-router-dom';
-import { AgentConsole } from '@/components/custom/AgentConsole';
-import { WorkflowStepper } from '@/components/custom/WorkflowStepper';
-import { useAgentStream } from '@/hooks/useAgentStream';
-import { Mermaid } from '@/components/custom/Mermaid';
+import { Loader2, Play, ExternalLink, Wand2, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { createJobOnce } from '@/lib/workspaceApi';
+import { apiErrorMessage } from '@/lib/apiError';
 
 interface Bin {
   id: string;
@@ -70,13 +66,11 @@ export const GenerationWizard = () => {
   const [researchGuidelines, setResearchGuidelines] = useState('');
   const [extraContext, setExtraContext] = useState('');
   
-  const { events, activeNode, isConnected, startStream, resumeStream, threadId: streamThreadId } = useAgentStream();
-
-  // Wizard State
-  const [step, setStep] = useState<'config' | 'review' | 'generating' | 'complete'>('config');
+  const navigate = useNavigate();
   const [configStep, setConfigStep] = useState(1);
-  const [generatedOutline, setGeneratedOutline] = useState<any[]>([]);
-  const [finalArticle, setFinalArticle] = useState<string>('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [runError, setRunError] = useState('');
+  const [costLimit, setCostLimit] = useState('2.00');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -110,69 +104,6 @@ export const GenerationWizard = () => {
     }
   };
 
-  // Monitor events for interrupt and completion
-  useEffect(() => {
-    if (events.length === 0) return;
-
-    const lastEvent = events[events.length - 1];
-
-    if (lastEvent.type === 'interrupt') {
-      setGeneratedOutline(lastEvent.payload);
-      setStep('review');
-    } else if (lastEvent.step === 'publisher' && lastEvent.status === 'completed') {
-      // The output of publisher is the final content
-      // Note: The backend publisher node returns { "final_content": "..." }
-      // But the event output is stringified.
-      try {
-        // The output might be a string representation of the dict or just the content?
-        // In agent.py: output: str(event["data"].get("output"))
-        // If publisher returns {"final_content": ...}, then output is "{'final_content': ...}"
-        // This is a bit messy. Ideally backend should send JSON.
-        // But let's try to parse it or just assume it's the content if it's not a dict string.
-        
-        // Actually, let's look at the backend again.
-        // yield { "data": json.dumps({"output": str(event["data"].get("output"))}) }
-        // So event.output is a string.
-        
-        // If I can't easily parse it, I might need to fetch the state at the end.
-        // But let's try to use the state endpoint if needed.
-        // For now, let's assume we can get it from the event or fetch state.
-        
-        // Let's fetch the final state to be sure.
-        if (streamThreadId) {
-           // We can't call async here easily, but we can set a flag or just do it.
-           // Or we can just wait for the user to click something? No, it should be automatic.
-           // Let's just set the step to complete and let the user see the console.
-           // But we need the final article.
-           
-           // Let's try to parse the output if it looks like JSON, otherwise use it as is.
-           // let content = lastEvent.output;
-           // It's likely a string representation of a python dict if we used str().
-           // That's bad for frontend.
-           // I should probably fix the backend to send JSON for output.
-           // But for now, let's just fetch the state.
-        }
-      } catch (e) {
-        console.error("Error parsing final output", e);
-      }
-    }
-  }, [events, streamThreadId]);
-
-  // Effect to fetch final state when publisher completes
-  useEffect(() => {
-    const lastEvent = events[events.length - 1];
-    if (lastEvent?.step === 'publisher' && lastEvent?.status === 'completed' && streamThreadId) {
-       // Fetch final state
-       import('@/lib/api').then(({ getAgentState }) => {
-         getAgentState(streamThreadId).then(state => {
-           setFinalArticle(state.values.final_content || 'No content generated.');
-           setStep('complete');
-         });
-       });
-    }
-  }, [events, streamThreadId]);
-
-
   const toggleBinSelection = (binId: string) => {
     setSelectedBins(prev => 
       prev.includes(binId) 
@@ -183,7 +114,8 @@ export const GenerationWizard = () => {
 
   const handleRun = async () => {
     if (!topic) return;
-    setStep('generating');
+    setIsSubmitting(true);
+    setRunError('');
     try {
       const urls = toneUrls.split('\n').filter(url => url.trim() !== '');
       
@@ -197,8 +129,9 @@ export const GenerationWizard = () => {
         }
       }
 
-      startStream({
+      const job = await createJobOnce({
         topic,
+        cost_limit_usd: costLimit,
         tone_urls: urls,
         selected_bins: selectedBins,
         target_domain: targetDomain,
@@ -214,84 +147,12 @@ export const GenerationWizard = () => {
         research_guidelines: researchGuidelines.split('\n').filter(l => l.trim() !== ''),
         extra_context: extraContext
       });
+      navigate(`/runs/${job.id}`);
     } catch (error) {
       console.error('Failed to start agent:', error);
-      alert('Failed to start agent. Check console for details.');
-      setStep('config');
-    }
+      setRunError(apiErrorMessage(error, 'Could not create generation run. Check your settings and try again.'));
+    } finally { setIsSubmitting(false); }
   };
-
-  const handleApproveOutline = async (approvedOutline: any[]) => {
-    if (!streamThreadId) return;
-    setStep('generating');
-    try {
-      resumeStream(streamThreadId, approvedOutline);
-    } catch (error) {
-      console.error('Failed to resume agent:', error);
-      alert('Failed to generate article. Check console for details.');
-      setStep('review');
-    }
-  };
-
-  if (step === 'review') {
-    return (
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div className="flex items-center space-x-4">
-          <Button variant="ghost" onClick={() => setStep('config')}>
-            <ArrowLeft className="mr-2 h-4 w-4" /> Back
-          </Button>
-          <h2 className="text-2xl font-bold tracking-tight">Review Outline</h2>
-        </div>
-        <OutlineEditor initialOutline={generatedOutline} onApprove={handleApproveOutline} />
-      </div>
-    );
-  }
-
-  if (step === 'generating') {
-    return (
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div className="text-center space-y-2">
-          <h2 className="text-2xl font-bold">Generating Content</h2>
-          <p className="text-muted-foreground">The agent is working on your article.</p>
-        </div>
-        
-        <WorkflowStepper activeNode={activeNode || 'writer'} />
-        
-        <AgentConsole 
-          events={events} 
-          activeNode={activeNode} 
-          isConnected={isConnected} 
-        />
-      </div>
-    );
-  }
-
-  if (step === 'complete') {
-    return (
-      <div className="max-w-4xl mx-auto space-y-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <Button variant="ghost" onClick={() => setStep('config')}>
-              <ArrowLeft className="mr-2 h-4 w-4" /> Start Over
-            </Button>
-            <h2 className="text-2xl font-bold tracking-tight text-green-600 flex items-center">
-              <CheckCircle className="mr-2 h-6 w-6" /> Generation Complete
-            </h2>
-          </div>
-          <Button onClick={() => navigator.clipboard.writeText(finalArticle)}>
-            Copy to Clipboard
-          </Button>
-        </div>
-        <Card className="overflow-hidden">
-          <CardContent className="p-8 md:p-12 bg-white dark:bg-zinc-950">
-            <article className="prose prose-slate dark:prose-invert max-w-none lg:prose-lg">
-              <MarkdownWithCitations content={finalArticle} />
-            </article>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
 
   const totalConfigSteps = 4;
   const nextConfigStep = () => setConfigStep(p => Math.min(totalConfigSteps, p + 1));
@@ -305,6 +166,8 @@ export const GenerationWizard = () => {
           Configure the agent to research and write your blog post.
         </p>
       </div>
+
+      {runError && <p role="alert" className="rounded border border-red-300 bg-red-50 p-4 text-red-900">{runError}</p>}
 
       {/* Progress Bar */}
       <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
@@ -566,6 +429,12 @@ export const GenerationWizard = () => {
                 </p>
               </div>
 
+              <div className="space-y-2">
+                <Label htmlFor="generation-limit">Run spending limit (USD)</Label>
+                <Input id="generation-limit" type="number" min="0.0001" max="10000" step="0.01" value={costLimit} onChange={event => setCostLimit(event.target.value)} />
+                <p className="text-xs text-muted-foreground">Estimated LLM charges only. Each call reserves budget before starting. Unpriced cloud models require administrator configuration. <Link className="underline" to="/costs">View prices and monthly limit</Link></p>
+              </div>
+
               <div className="space-y-4">
                 <Label>AI Model Selection</Label>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -626,7 +495,7 @@ export const GenerationWizard = () => {
                     Enable Deep Research Agent
                   </Label>
                   <p className="text-xs text-muted-foreground">
-                    Uses autonomous recursive research loops (OpenAI Native). Slower but more thorough.
+                    Runs multiple research passes to fill gaps before planning. Slower but more thorough.
                   </p>
                 </div>
               </div>
@@ -670,9 +539,9 @@ export const GenerationWizard = () => {
           <Button 
             size="lg" 
             onClick={handleRun} 
-            disabled={isConnected || !topic}
+            disabled={isSubmitting || !topic}
           >
-            {isConnected ? (
+            {isSubmitting ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Starting Agent...
               </>

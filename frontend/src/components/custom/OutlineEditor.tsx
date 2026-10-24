@@ -5,13 +5,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent } from '@/components/ui/card';
 import { ArrowUp, ArrowDown, Trash2, Plus } from 'lucide-react';
 
-interface Section {
-  id: string;
-  title: string;
-  intent: string;
-  source_ids: string[];
-  content?: string;
-}
+import type { OutlineSection as Section } from '@/lib/agentStream';
 
 interface OutlineEditorProps {
   initialOutline: Section[];
@@ -21,7 +15,7 @@ interface OutlineEditorProps {
 export const OutlineEditor = ({ initialOutline, onApprove }: OutlineEditorProps) => {
   const [outline, setOutline] = useState<Section[]>(initialOutline);
 
-  const updateSection = (index: number, field: keyof Section, value: any) => {
+  const updateSection = <K extends keyof Section>(index: number, field: K, value: Section[K]) => {
     const newOutline = [...outline];
     newOutline[index] = { ...newOutline[index], [field]: value };
     setOutline(newOutline);

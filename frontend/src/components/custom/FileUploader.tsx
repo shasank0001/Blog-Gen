@@ -1,3 +1,4 @@
+import { apiErrorMessage } from '@/lib/apiError';
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,10 +36,10 @@ export const FileUploader = ({ selectedBinId, onUploadComplete }: FileUploaderPr
       if (onUploadComplete) {
         onUploadComplete();
       }
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
       setStatus('error');
-      setErrorMessage(error.response?.data?.detail || 'Upload failed');
+      setErrorMessage(apiErrorMessage(error, 'Upload failed'));
     } finally {
       setUploading(false);
     }
